@@ -110,12 +110,12 @@ def run_simulation_cuda(job: Simulation):
 #include <curand_kernel.h>
 
 extern "C" __global__
-void risk_battle_kernel(unsigned long long *results, unsigned long long *progress, int seed) {
+void risk_battle_kernel(uint64_t *results, uint64_t *progress, int seed) {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx >= N_SIMULATIONS) return;
 
 	// Initialize bins to reduce memory accesses
-	__shared__ unsigned long long local_results[BINS];
+	__shared__ uint64_t local_results[BINS];
 	if (threadIdx.x < BINS) local_results[threadIdx.x] = 0;
 	__syncthreads();
 
