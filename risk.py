@@ -110,12 +110,6 @@ def run_simulation_cuda(job: Simulation):
 #include <curand_kernel.h>
 
 extern "C" __global__
-void test_seed_kernel(unsigned int *out, int seed) {
-	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx == 0) out[0] = (unsigned int)seed;
-}
-
-extern "C" __global__
 void risk_battle_kernel(unsigned long long *results, unsigned long long *progress, int seed) {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx >= N_SIMULATIONS) return;
@@ -183,16 +177,7 @@ void risk_battle_kernel(unsigned long long *results, unsigned long long *progres
 }
 """
 	# compile kernels
-	test_kernel = cupy.RawKernel(kernel_code, "test_seed_kernel")
 	risk_battle_kernel = cupy.RawKernel(kernel_code, "risk_battle_kernel")
-
-	# datetime based seed masked to 32 bits to ensure correct packing
-	seed = int(int(datetime.now().timestamp() * 1e6) & 0xFFFFFFFF)
-
-	# test seed packing
-	out = cupy.zeros(1, dtype=cupy.uint32)
-	test_kernel((1,), (32,), (out, seed))
-	print("seed seen by kernel:", int(out.get()[0]))
 
 	# launch config
 	block_dim = (256, 1, 1)
@@ -200,6 +185,9 @@ void risk_battle_kernel(unsigned long long *results, unsigned long long *progres
 	assert THREADS_PER_BLOCK >= job.Attackers # Make sure it is greater than attackers for local bin optimization
 	BLOCKS_NEEDED = job.Simulations // THREADS_PER_BLOCK + (job.Simulations % THREADS_PER_BLOCK > 0)
 	grid_dim = (BLOCKS_NEEDED, 1, 1)
+
+	# datetime based seed masked to 32 bits to ensure correct packing
+	seed = int(int(datetime.now().timestamp() * 1e6) & 0xFFFFFFFF)
 
 	# device allocations
 	d_results = cupy.zeros(BINS, dtype=cupy.uint64)
