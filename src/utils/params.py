@@ -40,7 +40,7 @@ def time_str(seconds):
 	secs = seconds % 60 # Apparently this preserves the decimal in python
 	return f"{mins}m {secs:.1f}s" if mins else f"{secs:.1f}s"
 
-def monitor_progress(get_progress, total, poll=1.0):
+def monitor_progress(get_progress, total, poll=1.0) -> float:
 	start_time = time.time()
 	while True:
 		elapsed = time.time() - start_time
@@ -52,7 +52,7 @@ def monitor_progress(get_progress, total, poll=1.0):
 		sys.stdout.write(f"\rProgress: {percent_complete:.2f}% - Elapsed: {time_str(elapsed)} - Remaining: {time_str(estimate)}     ")
 		sys.stdout.flush()
 
-		if progress >= total: return
+		if progress >= total: return elapsed
 		time.sleep(poll)
 
 Magnitude = {
