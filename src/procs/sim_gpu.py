@@ -1,55 +1,59 @@
 import numpy
 import cupy
+
 from datetime import datetime
+
+from enum import Enum
+from dataclasses import dataclass
+
 from utils.params import SimulationParams, BattleParams, monitor_progress, simulations_value, time_str
 
-def make_kernel_and_run(block_size: int, params: SimulationParams) -> tuple[float, numpy.ndarray]:
-	if block_size % 32 != 0:
-		raise ValueError("Block size must be an even multiple of warp size (32)")
-	if block_size > 1024:
-		raise ValueError("Block size cannot exceed 1024 (GPU hardware limit)")
+class CudaImplementation(Enum):
+	Naive = """
+__device__ inline int simulation(curandStateMRG32k3a& state) {
+	int attackers_left = ATTACKERS;
+	int defenders_left = DEFENDERS;
 
-	WARPS = block_size // 32 # A warp is 32 threads on my hardware
-	BINS = params.battle.attackers + 1 # 0 lost up to and including attackers lost
+	while (attackers_left > 0 && defenders_left > 0) {
+		int attack_rolls[3];
+		int defend_rolls[2];
 
-	# launch config
-	block_dim = (block_size, 1, 1) # We are solving a one dimensional problem (as opposed to images or 3d rendering) and don't gain anything from added complexity
-	THREADS_PER_BLOCK = block_dim[0] * block_dim[1] * block_dim[2]
-	BLOCKS_NEEDED = params.simulations // THREADS_PER_BLOCK + (params.simulations % THREADS_PER_BLOCK > 0)
-	grid_dim = (BLOCKS_NEEDED, 1, 1)
+		for (int i = 0; i < min(3, attackers_left); i++) {
+			attack_rolls[i] = 1 + (int)(curand(&state) % 6);
+		}
+		for (int i = 0; i < min(2, defenders_left); i++) {
+			defend_rolls[i] = 1 + (int)(curand(&state) % 6);
+		}
 
-	kernel_code = f"""
-#define N_SIMULATIONS {params.simulations}
-#define ATTACKERS {params.battle.attackers}
-#define DEFENDERS {params.battle.defenders}
-#define WARPS {WARPS}
-#define BINS {BINS}
-""" + """
-#include <curand_kernel.h>
+		// simple bubble sort for up to 3 elements (descending)
+		for (int i = 0; i < 2; i++) {
+			for (int j = 0; j < 2 - i; j++) {
+				if (attack_rolls[j] < attack_rolls[j + 1]) {
+					int tmp = attack_rolls[j];
+					attack_rolls[j] = attack_rolls[j + 1];
+					attack_rolls[j + 1] = tmp;
+				}
+			}
+		}
+		// defense 2-element sort
+		if (defend_rolls[0] < defend_rolls[1]) {
+			int tmp = defend_rolls[0];
+			defend_rolls[0] = defend_rolls[1];
+			defend_rolls[1] = tmp;
+		}
 
-extern "C" __global__
-void risk_battle_kernel(uint64_t *results, uint64_t *progress, int seed) {
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (idx >= N_SIMULATIONS) return;
-
-	// Use warp-level shared bins for synchronicity guarantees
-	const int warp_id = threadIdx.x / 32;
-	const int lane_id = threadIdx.x % 32;
-	__shared__ uint64_t warp_results[WARPS][BINS];
-
-	// Efficiently initialize warp_results
-	int total_elements = WARPS * BINS;
-	for (int i = threadIdx.x; i < total_elements; i += blockDim.x) {
-		int warp_idx = i / BINS;
-		int bin_idx = i % BINS;
-		warp_results[warp_idx][bin_idx] = 0;
+		// resolve
+		for (int i = 0; i < min(3, 2); i++) {
+			if (attack_rolls[i] > defend_rolls[i]) defenders_left -= 1;
+			else attackers_left -= 1;
+		}
 	}
-	__syncthreads();
 
-	// RNG state per thread
-	curandStateMRG32k3a state;
-	curand_init(seed + idx * 12345, idx, 0, &state);
-
+	return ATTACKERS - max(0, attackers_left);
+}
+"""
+	FastPath = """
+__device__ inline int simulation(curandStateMRG32k3a& state) {
 	int attackers_left = ATTACKERS;
 	int defenders_left = DEFENDERS;
 
@@ -96,7 +100,51 @@ void risk_battle_kernel(uint64_t *results, uint64_t *progress, int seed) {
 		}
 	}
 
-	int lost = ATTACKERS - attackers_left;
+	return ATTACKERS - attackers_left;
+}
+"""
+
+@dataclass
+class KernelParams:
+	simulations: int
+	attackers: int
+	defenders: int
+	warps: int
+	bins: int
+
+def kernel(params: KernelParams, implementation: CudaImplementation) -> str:
+	return f"""
+#define N_SIMULATIONS {params.simulations}
+#define ATTACKERS {params.attackers}
+#define DEFENDERS {params.defenders}
+#define WARPS {params.warps}
+#define BINS {params.bins}
+#include <curand_kernel.h>
+{implementation.value}""" + """
+extern "C" __global__
+void risk_battle_kernel(uint64_t *results, uint64_t *progress, int seed) {
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (idx >= N_SIMULATIONS) return;
+
+	// Use warp-level shared bins for synchronicity guarantees
+	const int warp_id = threadIdx.x / 32;
+	const int lane_id = threadIdx.x % 32;
+	__shared__ uint64_t warp_results[WARPS][BINS];
+
+	// Efficiently initialize warp_results
+	int total_elements = WARPS * BINS;
+	for (int i = threadIdx.x; i < total_elements; i += blockDim.x) {
+		int warp_idx = i / BINS;
+		int bin_idx = i % BINS;
+		warp_results[warp_idx][bin_idx] = 0;
+	}
+	__syncthreads();
+
+	// RNG state per thread
+	curandStateMRG32k3a state;
+	curand_init(seed + idx * 12345, idx, 0, &state);
+
+	int lost = simulation(state);
 
 	// Warp-level histogram
 	atomicAdd(&warp_results[warp_id][lost], 1ULL);
@@ -122,8 +170,30 @@ void risk_battle_kernel(uint64_t *results, uint64_t *progress, int seed) {
 	}
 }
 """
+
+def make_kernel_and_run(block_size: int, params: SimulationParams, implementation: CudaImplementation) -> tuple[float, numpy.ndarray]:
+	if block_size % 32 != 0:
+		raise ValueError("Block size must be an even multiple of warp size (32)")
+	if block_size > 1024:
+		raise ValueError("Block size cannot exceed 1024 (GPU hardware limit)")
+
+	WARPS = block_size // 32 # A warp is 32 threads on my hardware
+	BINS = params.battle.attackers + 1 # 0 lost up to and including attackers lost
+
+	# launch config
+	block_dim = (block_size, 1, 1) # We are solving a one dimensional problem (as opposed to images or 3d rendering) and don't gain anything from added complexity
+	THREADS_PER_BLOCK = block_dim[0] * block_dim[1] * block_dim[2]
+	BLOCKS_NEEDED = params.simulations // THREADS_PER_BLOCK + (params.simulations % THREADS_PER_BLOCK > 0)
+	grid_dim = (BLOCKS_NEEDED, 1, 1)
+
 	# compile kernels
-	risk_battle_kernel = cupy.RawKernel(kernel_code, "risk_battle_kernel")
+	risk_battle_kernel = cupy.RawKernel(kernel(KernelParams(
+		simulations=params.simulations,
+		attackers=params.battle.attackers,
+		defenders=params.battle.defenders,
+		warps=WARPS,
+		bins=BINS,
+	), implementation), "risk_battle_kernel")
 
 	# datetime based seed masked to 32 bits to ensure correct packing
 	seed = int(int(datetime.now().timestamp() * 1e6) & 0xFFFFFFFF)
@@ -145,9 +215,14 @@ void risk_battle_kernel(uint64_t *results, uint64_t *progress, int seed) {
 	return time, d_results.get()
 
 def run_simulation_cuda(params: SimulationParams) -> tuple[float, numpy.ndarray]:
-	return make_kernel_and_run(256, params)
+	# Testing showed identical performance between 256 and 512, and not enough resources for 1024
+	# The occasional usage drops I am seeing in task manager weren't a lack of parallelism but memory or atomics
+	return make_kernel_and_run(256, params, CudaImplementation.FastPath)
 
-def test_kernel_sizes():
+def test_kernel_performance():
+	"""
+Output:
+	"""
 	params = SimulationParams(
 		battle=BattleParams(
 			attackers=75,
@@ -155,6 +230,23 @@ def test_kernel_sizes():
 		),
 		simulations=simulations_value('100m'),
 	)
-	for BLOCK_SIZE in [256, 512, 1024]:
-		time, results = make_kernel_and_run(BLOCK_SIZE, params)
-		print(f"Block Size: {BLOCK_SIZE}, time: {time_str(time)}")
+
+	results = []
+	for implementation in CudaImplementation:
+		for BLOCK_SIZE in [32, 64, 128, 256, 512, 1024]:
+			print(f"\nTesting {implementation.name} with {BLOCK_SIZE} threads per block...")
+			try:
+				time, _ = make_kernel_and_run(BLOCK_SIZE, params, implementation)
+				results.append((implementation.name, BLOCK_SIZE, time_str(time)))
+			except cupy.cuda.driver.CUDADriverError as e:
+				results.append((implementation.name, BLOCK_SIZE, "FAILED"))
+
+	# Print summary table
+	print("\n" + "=" * 40)
+	print("RESULTS SUMMARY")
+	print("=" * 40)
+	print(f"{'Implementation':<15} | {'Block':>5} | {'Time':>8}")
+	print("-" * 40)
+
+	for impl_name, block_size, time in results:
+		print(f"{impl_name:<15} | {block_size:>5} | {time:>8}")
