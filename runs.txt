@@ -3,3 +3,8 @@ Saved results to out/CUDA-N1m-A75-D10.txt- Elapsed: 1.0s
 
 Saved results to out/CPU-N10m-A75-D10.txt- Elapsed: 1m 40.4s
 Saved results to out/CUDA-N10m-A75-D10.txt - Elapsed: 3.0s
+
+Saved results to out/CPU-N100m-A75-D10.txt- Elapsed: 15m 50.0s
+Saved results to out/CUDA-N100m-A75-D10.txt - Elapsed: 21.0s
+
+Saved results to out/CUDA-N1b-A75-D10.txt - Elapsed: 3m 38.1s
