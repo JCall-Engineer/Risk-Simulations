@@ -43,7 +43,7 @@ def worker(battle: BattleParams, batch_size: int, update_interval: int, shared_p
 	return results
 
 # CPU Simulation
-def run_simulation_cpu(params: SimulationParams) -> numpy.ndarray:
+def run_simulation_cpu(params: SimulationParams) -> tuple[float, numpy.ndarray]:
 	bins = params.battle.attackers + 1
 	num_workers = multiprocessing.cpu_count()
 	batch_size = params.simulations // num_workers
@@ -62,8 +62,8 @@ def run_simulation_cpu(params: SimulationParams) -> numpy.ndarray:
 
 	with multiprocessing.Pool(num_workers) as pool:
 		results = pool.starmap_async(worker, [(params.battle, batch_size, update_interval, shared_progress, lock)] * num_workers)
-		monitor_progress(get_progress=lambda: shared_progress.value, total=params.simulations)
+		time = monitor_progress(get_progress=lambda: shared_progress.value, total=params.simulations)
 		print("\nCPU Simulation complete!")
 		all_results = numpy.concatenate([remainder_results, *results.get()])
 
-	return numpy.bincount(all_results, minlength=bins)
+	return time, numpy.bincount(all_results, minlength=bins)

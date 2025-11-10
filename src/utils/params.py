@@ -23,7 +23,7 @@ class SimulationParams:
 class ProcessorConfig:
 	"""Parameters for a simulator profile"""
 	label: str
-	runner: Callable[[SimulationParams], numpy.ndarray]
+	runner: Callable[[SimulationParams], tuple[float, numpy.ndarray]]
 
 class Processor(Enum):
 	CPU = 'CPU'
@@ -147,7 +147,7 @@ def run_simulation(job: SimulationRequest) -> numpy.ndarray:
 		Processor.GPU: run_simulation_cuda,
 	}[job.processor]
 
-	results = runner(job.params)
+	time, results = runner(job.params)
 	save_results(file_name, results)
 	return results
 
