@@ -1,6 +1,6 @@
+import time
 from itertools import product
 from fractions import Fraction
-import time
 from collections import deque
 
 # Count W (both defenders die), L (both attackers die), and T (one loss each)
