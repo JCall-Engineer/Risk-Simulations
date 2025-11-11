@@ -1,49 +1,89 @@
 from itertools import product
 from fractions import Fraction
 from math import factorial
+from dataclasses import dataclass
 
-# Count W (both defenders die), L (both attackers die), and T (one each dies)
-def probability_space():
-	all_rolls = list(product(range(1, 7), repeat=5))
+@dataclass
+class ProbabilitySpace:
+	W: int
+	T: int
+	L: int
+	N: int
+	P_W: Fraction
+	P_T: Fraction
+	P_L: Fraction
+
+computed = {}
+
+# Counts all possible dice rolls and divides them into W L and T}
+def probability_space(attackers: int = 3, defenders: int = 2) -> ProbabilitySpace:
+	attackers = min(3, attackers)
+	defenders = min(2, defenders)
+	dice = attackers + defenders
+	assert attackers > 0 and defenders > 0 and dice >= 2
+
+	index = (attackers, defenders)
+	if index in computed:
+		return computed[index]
+
+	all_rolls = list(product(range(1, 7), repeat=dice))
 
 	# Initialize counters
 	W = 0  # Both defenders die
 	L = 0  # Both attackers die
 	T = 0  # One attacker and one defender each dies
 	N = len(all_rolls)
-	assert N == 7776  # 6^5 = 7776
+
+	power_6 = [1, 6, 36, 216, 1296, 7776]
+	assert N == power_6[dice]
 
 	# Iterate through all possible dice rolls
 	for roll in all_rolls:
-		att_rolls = sorted(roll[:3], reverse=True)  # First 3 elements of a 5 element set
-		def_rolls = sorted(roll[3:], reverse=True)  # Last 2 elements of a 5 element set
+		att_rolls = sorted(roll[:attackers], reverse=True)
+		def_rolls = sorted(roll[attackers:], reverse=True)
+		assert len(att_rolls) == attackers
+		assert len(def_rolls) == defenders
 
 		# Compare dice outcomes
+		compare = min(attackers, defenders)
+
 		attacker_losses = 0
 		defender_losses = 0
 
-		# First dice pair
-		if att_rolls[0] > def_rolls[0]:
-			defender_losses += 1
-		else:  # Defender wins ties
-			attacker_losses += 1
+		for i in range(0, compare):
+			if att_rolls[i] > def_rolls[i]:
+				defender_losses += 1
+			else:
+				attacker_losses += 1
 
-		# Second dice pair
-		if att_rolls[1] > def_rolls[1]:
-			defender_losses += 1
-		else:  # Defender wins ties
-			attacker_losses += 1
-
-		# Categorize outcome
-		if defender_losses == 2:
-			W += 1  # Both defenders die
-		elif attacker_losses == 2:
-			L += 1  # Both attackers die
+		# Categorize outcome (handles 1 units lost or 2 units lost)
+		if defender_losses > attacker_losses:
+			W += 1
+		elif attacker_losses > defender_losses:
+			L += 1
 		else:
-			T += 1  # One attacker, one defender, each dies
+			T += 1
 
 	assert W + L + T == N  # Sanity check
-	return Fraction(W, N), Fraction(L, N), Fraction(T, N)
+	result = ProbabilitySpace(
+		W = W,
+		T = T,
+		L = L,
+		N = N,
+		P_W = Fraction(W, N),
+		P_T = Fraction(T, N),
+		P_L = Fraction(L, N),
+	)
+	computed[index] = result
+	return result
+
+print(f"(3, 2): {probability_space(3, 2)}")
+print(f"(3, 1): {probability_space(3, 1)}")
+print(f"(2, 2): {probability_space(2, 2)}")
+print(f"(2, 1): {probability_space(2, 1)}")
+print(f"(1, 2): {probability_space(1, 2)}")
+print(f"(1, 1): {probability_space(1, 1)}")
+exit()
 
 # Compute the probability of transitioning from (A1, D1) to (A2, D2) using combinatorial calculations
 def compute_probability(start, end, W, L, T):
@@ -98,8 +138,8 @@ def WLT_union(start, ends, W, L, T):
 
 # Compute probabilities for the range [50, 75] to reach (2, n)
 # Why? if we consider attackers dropping to 2 as a loss then the error term for rolling fewer than 5 dice is not significant at this scale
-W, L, T = probability_space()
-probability_map = {i: WLT_union((i, 10), [(2, n) for n in range(1, 11)], W, L, T) for i in range(50, 76)}
+space = probability_space()
+probability_map = {i: WLT_union((i, 10), [(2, n) for n in range(1, 11)], space.W, space.L, space.T) for i in range(50, 76)}
 
 scales = [(1e15, "100 trillion"), (1e14, "10 trillion"), (1e13, "a trillion"),
 		  (1e12, "100 billion"), (1e10, "10 billion"), (1e9, "a billion"),
