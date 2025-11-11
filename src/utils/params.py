@@ -56,6 +56,7 @@ def monitor_progress(get_progress, total, poll=1.0) -> float:
 		time.sleep(poll)
 
 Magnitude = {
+	't': 1_000_000_000_000,
 	'b': 1_000_000_000,
 	'm': 1_000_000,
 	'k': 1_000,
@@ -97,15 +98,19 @@ def parse_slug(file_name: str) -> SimulationRequest:
 		processor=processor
 	)
 
-def save_results(file_name: str, results: numpy.ndarray) -> None:
+def save_results(file_name: str, time: float, results: numpy.ndarray) -> None:
 	os.makedirs("out", exist_ok=True)
 	with open(file_name, 'w') as f:
+		f.write(f"{time}\n")
 		for count in results:
 			f.write(f"{count}\n")
 	print(f"Saved results to {file_name}")
-def load_results(slug: str) -> numpy.ndarray:
+def load_results(slug: str) -> tuple[float, numpy.ndarray]:
 	file_name = f"out/{slug}.txt"
-	return numpy.loadtxt(file_name, dtype=numpy.uint64)
+	with open(file_name, 'r') as f:
+		time = float(f.readline().strip())
+		results = numpy.loadtxt(f, dtype=numpy.uint64)
+	return time, results
 def list_saves() -> list[SimulationRequest]:
 	out: list[SimulationRequest] = []
 
@@ -129,7 +134,7 @@ def print_results(job: SimulationRequest, results: numpy.ndarray) -> None:
 	check = numpy.sum(results)
 	print(f"\nSanity Check - total events: {check:>15,} ({'correct' if check == job.params.simulations else 'incorrect'})")
 
-def run_simulation(job: SimulationRequest) -> numpy.ndarray:
+def run_simulation(job: SimulationRequest) -> tuple[float, numpy.ndarray]:
 	from procs.sim_cpu import run_simulation_cpu
 	from procs.sim_gpu import run_simulation_cuda
 	slug = make_slug(job)
@@ -148,8 +153,8 @@ def run_simulation(job: SimulationRequest) -> numpy.ndarray:
 	}[job.processor]
 
 	time, results = runner(job.params)
-	save_results(file_name, results)
-	return results
+	save_results(file_name, time, results)
+	return time, results
 
 def job(asking: Processor, simulations: int, attackers: int, defenders: int) -> SimulationRequest:
 	return SimulationRequest(

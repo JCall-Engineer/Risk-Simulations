@@ -1,5 +1,6 @@
 from matplotlib import pyplot
 from utils.params import Processor, simulations_label, simulations_value, list_saves, print_results, run_simulation, job, make_slug, load_results
+from procs.sim_gpu import test_kernel_performance
 
 class RiskSimulator:
 	def __init__(self):
@@ -36,7 +37,7 @@ class RiskSimulator:
 
 	def run_sim(self, processor):
 		task = job(processor, self.simulations, self.attackers, self.defenders)
-		results = run_simulation(task)
+		time, results = run_simulation(task)
 		print_results(task, results)
 
 	def list_sims(self):
@@ -92,7 +93,7 @@ class RiskSimulator:
 
 		for i, sim in enumerate(self.selected):
 			slug = make_slug(sim)
-			results = load_results(slug)
+			time, results = load_results(slug)
 			color = colors[i % len(colors)]
 			pyplot.bar(range(len(results)), results, alpha=0.5, label=slug, color=color)
 
@@ -109,7 +110,7 @@ class RiskSimulator:
 
 		for sim in self.selected:
 			slug = make_slug(sim)
-			results = load_results(slug)
+			time, results = load_results(slug)
 			print(f"\n{slug}:")
 			print_results(sim, results)
 
@@ -121,6 +122,7 @@ class RiskSimulator:
 			'clear': self.clear_selection,
 			'graph': self.graph_selected,
 			'print': self.print_selected,
+			'test': test_kernel_performance,
 		}
 
 		print("Risk Battle Simulator")

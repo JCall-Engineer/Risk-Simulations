@@ -239,7 +239,7 @@ def make_kernel_and_run(config: KernelConfig, params: SimulationParams, implemen
 
 def run_simulation_cuda(params: SimulationParams) -> tuple[float, numpy.ndarray]:
 	return make_kernel_and_run(KernelConfig(
-		block_size=256,
+		block_size=32,
 		simulations_per_thread=16384
 	), params, CudaImplementation.FastPath)
 
@@ -260,8 +260,8 @@ def test_kernel_performance():
 
 	results: list[TestResults] = []
 	implementation = CudaImplementation.FastPath
-	for spt in [4096, 8192, 16384]:
-		for BLOCK_SIZE in [64, 256, 512]:
+	for spt in [16384, 32768, 65536, 131072]:
+		for BLOCK_SIZE in [32]: #, 64, 128, 256, 512]:
 			config = KernelConfig(
 				block_size=BLOCK_SIZE,
 				simulations_per_thread=spt
