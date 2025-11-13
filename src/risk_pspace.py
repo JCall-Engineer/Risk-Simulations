@@ -4,16 +4,16 @@ import numpy as np
 figure, axes = pyplot.subplots(figsize=(14, 10))
 
 # Define circles
-defenders_to_x = {
-	10: 1,
-	3: 2.5,
-	2: 3.5,
-	1: 5.5,
-	0: 7.5,
+attackers_to_x = {
+	75: 1,
+	4: 2,
+	3: 3,
+	2: 5,
+	1: 7,
+	0: 9,
 }
-attackers_to_y = {
-	75: 9.5,
-	4: 8.5,
+defenders_to_y = {
+	10: 9.5,
 	3: 7.5,
 	2: 5,
 	1: 3,
@@ -29,7 +29,7 @@ circles = [
 ]
 
 # Circle positions: {label: (x, y)}
-circle_xy = {f'{c[0]},{c[1]}': (defenders_to_x[c[1]], attackers_to_y[c[0]]) for c in circles}
+circle_xy = {f'{c[0]},{c[1]}': (attackers_to_x[c[0]], defenders_to_y[c[1]]) for c in circles}
 radius = 0.3
 
 # Draw circles
@@ -38,17 +38,44 @@ for label, (x, y) in circle_xy.items():
 	axes.add_patch(circle)
 	axes.text(x, y, label, ha='center', va='center', fontsize=10, weight='bold')
 
-# Boxes: {label: (x, y, width, height)}
-boxes = {
-	'3v2': (0.2, 6.5, 4.1, 3.8),
-	'2v2': (0.2, 4.2, 4.1, 1.6),
-	'1v2': (0.2, 2.2, 4.1, 1.6),
-	'3v1': (4.7, 6.5, 1.6, 3.8),
-	'': (4.7, 4.2, 1.6, 1.6),
-	' ': (4.7, 2.2, 1.6, 1.6),
-	'defeat': (0.2, 0.2, 6.1, 1.6),
-	'victory': (6.7, 2.2, 1.6, 8.1)
+def calculate_box(pixel_coords, padding=0.2):
+	"""
+	Calculate box boundaries from list of pixel coordinates.
+	
+	Args:
+		pixel_coords: List of (x, y) pixel coordinate tuples
+		padding: Extra space around the circles
+	
+	Returns:
+		(x, y, width, height) tuple for the box
+	"""
+	x_positions = [coord[0] for coord in pixel_coords]
+	y_positions = [coord[1] for coord in pixel_coords]
+	
+	min_x = min(x_positions) - radius - padding
+	max_x = max(x_positions) + radius + padding
+	min_y = min(y_positions) - radius - padding
+	max_y = max(y_positions) + radius + padding
+	
+	width = max_x - min_x
+	height = max_y - min_y
+	
+	return (min_x, min_y, width, height)
+
+# Define boxes by their circle string keys
+box_definitions = {
+	'3v2': ['75,10', '75,3', '75,2', '4,10', '4,2', '3,10', '3,3', '3,2'],
+	'2v2': ['2,10', '2,3', '2,2'],
+	'1v2': ['1,10', '1,2'],
+	'3v1': ['75,1', '3,1'],
+	'': ['2,1'],
+	' ': ['1,1'],
+	'defeat': ['0,10', '0,2', '0,1'],
+	'victory': ['75,0', '3,0', '2,0', '1,0']
 }
+
+# Calculate boxes
+boxes = {label: calculate_box([circle_xy[key] for key in keys]) for label, keys in box_definitions.items()}
 
 # Draw boxes
 for label, (x, y, w, h) in boxes.items():
@@ -185,7 +212,7 @@ for conn in curved_connections:
 	else:
 		draw_curve(conn[0], conn[1], axes)
 
-axes.set_xlim(-0.5, 9)
+axes.set_xlim(0, 11)
 axes.set_ylim(0, 11)
 axes.set_aspect('equal')
 axes.axis('off')
