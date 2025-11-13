@@ -195,15 +195,15 @@ def draw_curve(start, end, axes, direction='auto'):
 	axes.plot(x_curve[mask], y_curve[mask], 'k:', linewidth=1.5)
 
 curved_connections = [
-	('4,10', '2,10', 'left'),
-	('3,10', '1,10', 'left'),
-	('4,2', '2,2', 'right'),
-	('3,2', '1,2', 'right'),
-	('3,3', '3,1', 'down'),
-	('3,2', '3,0', 'down'),
-	('2,2', '2,0', 'up'),
-	('2,2', '0,2', 'right'),
-	('2,10', '0,10', 'left'),
+	('4,10', '2,10', 'up'),
+	('3,10', '1,10', 'up'),
+	('4,2', '2,2', 'down'),
+	('3,2', '1,2', 'down'),
+	('3,3', '3,1', 'right'),
+	('3,2', '3,0', 'right'),
+	('2,2', '2,0', 'left'),
+	('2,2', '0,2', 'down'),
+	('2,10', '0,10', 'up'),
 ]
 
 for conn in curved_connections:
