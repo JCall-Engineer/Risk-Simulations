@@ -3,23 +3,37 @@ import numpy as np
 
 figure, axes = pyplot.subplots(figsize=(14, 10))
 
-# Circle positions: {label: (x, y)}
-circles = {
-	'75,10': (1, 9.5), '75,2': (3.5, 9.5), '75,3': (2.25, 9.5), '3,10': (1, 7.5), '3,2': (3.5, 7.5), '3,3': (2.25, 7.5),
-	'4,10': (1, 8.5), '4,2': (3.5, 8.5),
-	'2,10': (1, 5), '2,2': (3.5, 5),
-	'1,10': (1, 3), '1,2': (3.5, 3),
-	'75,1': (5.5, 9.5), '3,1': (5.5, 7.5),
-	'2,1': (5.5, 5),
-	'1,1': (5.5, 3),
-	'0,10': (1, 1), '0,1': (5.5, 1), '0,2': (3.5, 1),
-	'75,0': (7.5, 9.5), '1,0': (7.5, 3), '2,0': (7.5, 5), '3,0': (7.5, 7.5)
+# Define circles
+defenders_to_x = {
+	10: 1,
+	3: 2.5,
+	2: 3.5,
+	1: 5.5,
+	0: 7.5,
 }
+attackers_to_y = {
+	75: 9.5,
+	4: 8.5,
+	3: 7.5,
+	2: 5,
+	1: 3,
+	0: 1,
+}
+circles = [
+	(75, 10), (75, 3), (75, 2), (75, 1), (75, 0),
+	(4, 10),           (4, 2),
+	(3, 10),  (3, 3),  (3, 2),  (3, 1),  (3, 0),
+	(2, 10),  (2, 3),  (2, 2),  (2, 1),  (2, 0),
+	(1, 10),           (1, 2),  (1, 1),  (1, 0),
+	(0, 10),           (0, 2),  (0, 1),
+]
 
+# Circle positions: {label: (x, y)}
+circle_xy = {f'{c[0]},{c[1]}': (defenders_to_x[c[1]], attackers_to_y[c[0]]) for c in circles}
 radius = 0.3
 
 # Draw circles
-for label, (x, y) in circles.items():
+for label, (x, y) in circle_xy.items():
 	circle = patches.Circle((x, y), radius, color='lightblue', ec='black', linewidth=2)
 	axes.add_patch(circle)
 	axes.text(x, y, label, ha='center', va='center', fontsize=10, weight='bold')
@@ -45,8 +59,8 @@ for label, (x, y, w, h) in boxes.items():
 
 # Helper function to get edge points
 def get_edge_points(start, end):
-	x1, y1 = circles[start]
-	x2, y2 = circles[end]
+	x1, y1 = circle_xy[start]
+	x2, y2 = circle_xy[end]
 	dx = x2 - x1
 	dy = y2 - y1
 	dist = np.sqrt(dx**2 + dy**2)
@@ -81,7 +95,8 @@ connections = [
 	('75,1', '3,1'),
 
 	# 2v2 box
-	('2,10', '2,2'),
+	('2,10', '2,3'),
+	('2,3', '2,2'),
 
 	# 1v2 box
 	('1,10', '1,2'),
@@ -113,8 +128,8 @@ for start, end in connections:
 
 # Curved connections
 def draw_curve(start, end, axes, direction='auto'):
-	x1, y1 = circles[start]
-	x2, y2 = circles[end]
+	x1, y1 = circle_xy[start]
+	x2, y2 = circle_xy[end]
 
 	# Create a curved path
 	t = np.linspace(0, 1, 100)
