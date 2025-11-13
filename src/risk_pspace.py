@@ -217,7 +217,7 @@ for conn in curved_connections:
 	else:
 		draw_curve(conn[0], conn[1], axes)
 
-axes.set_xlim(0.5, 10.25)
+axes.set_xlim(0, 10.25)
 axes.set_ylim(3.25, 11)
 axes.set_aspect('equal')
 axes.axis('off')
