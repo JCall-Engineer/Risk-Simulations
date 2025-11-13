@@ -134,11 +134,11 @@ def draw_curve(start, end, axes, direction='auto'):
 			perp_x = -dy * 0.3
 			perp_y = dx * 0.3
 		case 'up':
-			perp_x = -dx * 0.3
-			perp_y = -dy * 0.3
+			perp_x = dy * 0.3
+			perp_y = dx * 0.3
 		case 'down':
-			perp_x = dx * 0.3
-			perp_y = dy * 0.3
+			perp_x = -dy * 0.3
+			perp_y = -dx * 0.3
 		case _:  # 'auto' or any other value
 			perp_x = -dy * 0.3
 			perp_y = dx * 0.3
