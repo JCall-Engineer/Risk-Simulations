@@ -5,15 +5,15 @@ figure, axes = pyplot.subplots(figsize=(14, 10))
 
 # Circle positions: {label: (x, y)}
 circles = {
-	'75,10': (1, 9), '75,2': (3, 9), '75,3': (2, 9), '3,10': (1, 7), '3,2': (3, 7), '3,3': (2, 7),
-	'4,10': (1, 8), '4,2': (3, 8),
-	'2,10': (1, 5), '2,2': (3, 5),
-	'1,10': (1, 3), '1,2': (3, 3),
-	'75,1': (5, 9), '3,1': (5, 7),
-	'2,1': (5, 5),
-	'1,1': (5, 3),
-	'0,10': (1, 1), '0,1': (5, 1), '0,2': (3, 1),
-	'75,0': (7, 9), '1,0': (7, 3), '2,0': (7, 5), '3,0': (7, 7)
+	'75,10': (1, 9.5), '75,2': (3.5, 9.5), '75,3': (2.25, 9.5), '3,10': (1, 7.5), '3,2': (3.5, 7.5), '3,3': (2.25, 7.5),
+	'4,10': (1, 8.5), '4,2': (3.5, 8.5),
+	'2,10': (1, 5), '2,2': (3.5, 5),
+	'1,10': (1, 3), '1,2': (3.5, 3),
+	'75,1': (5.5, 9.5), '3,1': (5.5, 7.5),
+	'2,1': (5.5, 5),
+	'1,1': (5.5, 3),
+	'0,10': (1, 1), '0,1': (5.5, 1), '0,2': (3.5, 1),
+	'75,0': (7.5, 9.5), '1,0': (7.5, 3), '2,0': (7.5, 5), '3,0': (7.5, 7.5)
 }
 
 radius = 0.3
@@ -26,14 +26,14 @@ for label, (x, y) in circles.items():
 
 # Boxes: {label: (x, y, width, height)}
 boxes = {
-	'3v2': (0.2, 6.2, 3.6, 3.6),
-	'2v2': (0.2, 4.2, 3.6, 1.6),
-	'1v2': (0.2, 2.2, 3.6, 1.6),
-	'3v1': (4.2, 6.2, 1.6, 3.6),
-	'': (4.2, 4.2, 1.6, 1.6),
-	' ': (4.2, 2.2, 1.6, 1.6),
-	'defeat': (0.2, 0.2, 5.6, 1.6),
-	'victory': (6.2, 2.2, 1.6, 7.6)
+	'3v2': (0.2, 6.5, 4.1, 3.8),
+	'2v2': (0.2, 4.2, 4.1, 1.6),
+	'1v2': (0.2, 2.2, 4.1, 1.6),
+	'3v1': (4.7, 6.5, 1.6, 3.8),
+	'': (4.7, 4.2, 1.6, 1.6),
+	' ': (4.7, 2.2, 1.6, 1.6),
+	'defeat': (0.2, 0.2, 6.1, 1.6),
+	'victory': (6.7, 2.2, 1.6, 8.1)
 }
 
 # Draw boxes
@@ -65,16 +65,20 @@ connections = [
 	# 3v2 box connections (reconnected)
 	('75,10', '4,10'), ('4,10', '3,10'), ('3,10', '3,3'), ('3,3', '3,2'),
 	('75,10', '75,3'), ('75,3', '75,2'), ('75,2', '4,2'), ('4,2', '3,2'),
-	('75,10', '3,2'),
+	('75,10', '3,2'), ('3,2', '2,1'),
+
 	# 2v2 box
 	('2,10', '2,2'),
+
 	# 1v2 box
 	('1,10', '1,2'),
+
 	# New connections
 	('75,2', '75,1'), ('75,1', '75,0'),
 	('3,1', '3,0'), ('3,1', '2,1'),
 	('2,1', '1,1'), ('2,1', '2,0'),
-	('1,1', '0,1'), ('1,1', '1,0')
+	('1,1', '0,1'), ('1,1', '1,0'),
+	('1,10', '0,10'), ('1,2', '0,2'), ('1,2', '1,1')
 ]
 
 for start, end in connections:
@@ -82,20 +86,40 @@ for start, end in connections:
 	axes.plot([x1, x2], [y1, y2], 'k:', linewidth=1.5, marker='o', markersize=3)
 
 # Curved connections
-def draw_curve(start, end, axes):
+def draw_curve(start, end, axes, direction='auto'):
 	x1, y1 = circles[start]
 	x2, y2 = circles[end]
+
 	# Create a curved path
 	t = np.linspace(0, 1, 100)
 	mid_x = (x1 + x2) / 2
 	mid_y = (y1 + y2) / 2
+
 	# Add curvature perpendicular to the line
 	dx = x2 - x1
 	dy = y2 - y1
-	perp_x = -dy * 0.3
-	perp_y = dx * 0.3
+	
+	# Adjust direction based on parameter
+	match direction:
+		case 'left':
+			perp_x = dy * 0.3
+			perp_y = -dx * 0.3
+		case 'right':
+			perp_x = -dy * 0.3
+			perp_y = dx * 0.3
+		case 'up':
+			perp_x = -dx * 0.3
+			perp_y = -dy * 0.3
+		case 'down':
+			perp_x = dx * 0.3
+			perp_y = dy * 0.3
+		case _:  # 'auto' or any other value
+			perp_x = -dy * 0.3
+			perp_y = dx * 0.3
+	
 	x_curve = (1-t)**2 * x1 + 2*(1-t)*t * (mid_x + perp_x) + t**2 * x2
 	y_curve = (1-t)**2 * y1 + 2*(1-t)*t * (mid_y + perp_y) + t**2 * y2
+
 	# Trim to edges
 	dist_start = np.sqrt((x_curve - x1)**2 + (y_curve - y1)**2)
 	dist_end = np.sqrt((x_curve - x2)**2 + (y_curve - y2)**2)
@@ -103,15 +127,25 @@ def draw_curve(start, end, axes):
 	axes.plot(x_curve[mask], y_curve[mask], 'k:', linewidth=1.5)
 
 curved_connections = [
-	('4,10', '2,10'), ('4,2', '2,2'), ('3,3', '3,1'),
-	('3,10', '1,10'), ('3,2', '1,2'), ('3,2', '3,0')
+	('4,10', '2,10', 'left'),
+	('3,10', '1,10', 'left'),
+	('4,2', '2,2', 'right'),
+	('3,2', '1,2', 'right'),
+	('3,3', '3,1', 'down'),
+	('3,2', '3,0', 'down'),
+	('2,2', '2,0', 'up'),
+	('2,2', '0,2', 'right'),
+	('2,10', '0,10', 'left'),
 ]
 
-for start, end in curved_connections:
-	draw_curve(start, end, axes)
+for conn in curved_connections:
+	if len(conn) == 3:
+		draw_curve(conn[0], conn[1], axes, conn[2])
+	else:
+		draw_curve(conn[0], conn[1], axes)
 
-axes.set_xlim(-0.5, 8)
-axes.set_ylim(0, 10.5)
+axes.set_xlim(-0.5, 9)
+axes.set_ylim(0, 11)
 axes.set_aspect('equal')
 axes.axis('off')
 pyplot.title('Risk Dice Rolling Scenarios', fontsize=16, weight='bold', pad=20)
