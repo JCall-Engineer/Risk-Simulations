@@ -212,10 +212,13 @@ for conn in curved_connections:
 	else:
 		draw_curve(conn[0], conn[1], axes)
 
-axes.set_xlim(0, 11)
-axes.set_ylim(0, 11)
+axes.set_xlim(0.5, 10.25)
+axes.set_ylim(3.25, 11)
 axes.set_aspect('equal')
 axes.axis('off')
-pyplot.title('Risk Dice Rolling Scenarios', fontsize=16, weight='bold', pad=20)
+pyplot.suptitle('Risk Dice Rolling Scenarios', fontsize=16, weight='bold')
 pyplot.tight_layout()
+
+figure.patch.set_alpha(0)
+pyplot.savefig('out/risk_pspace.png', dpi=300, bbox_inches='tight', facecolor='none', pad_inches=0.5)
 pyplot.show()
