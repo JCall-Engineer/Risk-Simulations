@@ -41,25 +41,25 @@ for label, (x, y) in circle_xy.items():
 def calculate_box(pixel_coords, padding=0.2):
 	"""
 	Calculate box boundaries from list of pixel coordinates.
-	
+
 	Args:
 		pixel_coords: List of (x, y) pixel coordinate tuples
 		padding: Extra space around the circles
-	
+
 	Returns:
 		(x, y, width, height) tuple for the box
 	"""
 	x_positions = [coord[0] for coord in pixel_coords]
 	y_positions = [coord[1] for coord in pixel_coords]
-	
+
 	min_x = min(x_positions) - radius - padding
 	max_x = max(x_positions) + radius + padding
 	min_y = min(y_positions) - radius - padding
 	max_y = max(y_positions) + radius + padding
-	
+
 	width = max_x - min_x
 	height = max_y - min_y
-	
+
 	return (min_x, min_y, width, height)
 
 # Define boxes by their circle string keys
@@ -166,7 +166,7 @@ def draw_curve(start, end, axes, direction='auto'):
 	# Add curvature perpendicular to the line
 	dx = x2 - x1
 	dy = y2 - y1
-	
+
 	# Adjust direction based on parameter
 	match direction:
 		case 'left':
@@ -184,7 +184,7 @@ def draw_curve(start, end, axes, direction='auto'):
 		case _:  # 'auto' or any other value
 			perp_x = -dy * 0.3
 			perp_y = dx * 0.3
-	
+
 	x_curve = (1-t)**2 * x1 + 2*(1-t)*t * (mid_x + perp_x) + t**2 * x2
 	y_curve = (1-t)**2 * y1 + 2*(1-t)*t * (mid_y + perp_y) + t**2 * y2
 
