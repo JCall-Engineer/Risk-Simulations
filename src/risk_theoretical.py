@@ -2,6 +2,7 @@ from itertools import product
 from fractions import Fraction
 from math import factorial
 from dataclasses import dataclass
+from collections import defaultdict
 
 @dataclass
 class ProbabilitySpace:
@@ -13,18 +14,76 @@ class ProbabilitySpace:
 	P_T: Fraction
 	P_L: Fraction
 
-computed = {}
+class Node:
+	attackers: int
+	defenders: int
+
+	# Required so this class can be used as a dict key
+	def __hash__(self):
+		return hash((self.attackers, self.defenders))
+	
+	def __eq__(self, other):
+		if isinstance(other, Node):
+			return self.attackers == other.attackers and self.defenders == other.defenders
+		if isinstance(other, tuple):
+			if len(other) != 2: return False
+			return self.attackers == other[0] and self.defenders == other[1]
+		return False
+
+	# Cast from tuple
+	def __init__(self, *args, **kwargs):
+		if len(args) == 1 and isinstance(args[0], tuple):
+			self.attackers, self.defenders = args[0]
+		elif len(args) == 2:
+			self.attackers, self.defenders = args
+		else:
+			self.attackers = kwargs.get('attackers', 0)
+			self.defenders = kwargs.get('defenders', 0)
+
+	# Allow a handy delta
+	def __sub__(self, other):
+		if isinstance(other, Node):
+			return Node(
+				self.attackers - other.attackers,
+				self.defenders - other.defenders
+			)
+		return NotImplemented
+
+	# Allow unpacking
+	def __iter__(self):
+		return iter((self.attackers, self.defenders))
+
+	# Print the same as a tuple
+	def __repr__(self):
+		return f"({self.attackers}, {self.defenders})"
+
+	def is_valid(self):
+		return not any(i < 0 for i in [self.attackers, self.defenders]) and self.attackers + self.defenders > 0
+
+	def has_edges(self):
+		return self.attackers > 0 and self.defenders > 0
+
+	@property
+	def space(self) -> ProbabilitySpace:
+		return probability_space(self)
+
+# probability_space is going to be called *a lot* so cache the results
+computed_spaces = {}
 
 # Counts all possible dice rolls and divides them into W L and T}
-def probability_space(attackers: int = 3, defenders: int = 2) -> ProbabilitySpace:
+def probability_space(attackers: int | tuple[int, int] | Node = 3, defenders: int = 2) -> ProbabilitySpace:
+	if isinstance(attackers, (Node, tuple)):
+		attackers, defenders = attackers
+
 	attackers = min(3, attackers)
 	defenders = min(2, defenders)
 	dice = attackers + defenders
+
 	assert attackers > 0 and defenders > 0 and dice >= 2
 
 	index = (attackers, defenders)
-	if index in computed:
-		return computed[index]
+	if index in computed_spaces:
+		return computed_spaces[index]
 
 	all_rolls = list(product(range(1, 7), repeat=dice))
 
@@ -74,80 +133,258 @@ def probability_space(attackers: int = 3, defenders: int = 2) -> ProbabilitySpac
 		P_T = Fraction(T, N),
 		P_L = Fraction(L, N),
 	)
-	computed[index] = result
+	computed_spaces[index] = result
 	return result
 
-print(f"(3, 2): {probability_space(3, 2)}")
-print(f"(3, 1): {probability_space(3, 1)}")
-print(f"(2, 2): {probability_space(2, 2)}")
-print(f"(2, 1): {probability_space(2, 1)}")
-print(f"(1, 2): {probability_space(1, 2)}")
-print(f"(1, 1): {probability_space(1, 1)}")
-exit()
+# Compute the probability of transitioning from `start` to `end` using combinatorial calculations
+def constant_space_probability(start: Node, end: Node) -> Fraction:
+	if (any(i < 0 for i in [start.attackers, start.defenders, end.attackers, end.defenders])):
+		raise ValueError(f"Negative troop counts are invalid: start={start}, end={end}")
 
-# Compute the probability of transitioning from (A1, D1) to (A2, D2) using combinatorial calculations
-def compute_probability(start, end, W, L, T):
-	A1, D1 = start
-	A2, D2 = end
-	
-	deltaA = A1 - A2
-	deltaD = D1 - D2
-	
-	# It is impossible for an odd number of troops to be lost in any given battle
-	if ((deltaA + deltaD) % 2 > 0):
-		return 0
+	if (any(i == 0 for i in [start.attackers, start.defenders])):
+		raise ValueError(f"There are no dice to be rolled at {start}")
+	if (all(i == 0 for i in [end.attackers, end.defenders])):
+		raise ValueError(f"{end} is not a state that can be reached")
 
-	W_count = deltaD // 2  # Number of times W happened
-	L_count = deltaA // 2  # Number of times L happened
+	space = start.space
+	if (space != end.space):
+		raise ValueError(f"The number of dice used changes between {start} and {end}, this function is unable to compute probability over a non-uniform probability space")
+
+	delta = start - end
+	if (delta.attackers > 0 or delta.defenders > 0):
+		return Fraction(0) # It is impossible for one size to gain troops in combat
+	if (all(i >= 2 for i in [start.attackers, start.defenders]) and ((delta.attackers + delta.defenders) % 2 > 0)):
+		return Fraction(0) # It is impossible for an odd number of troops to be lost in a battle with 2+ attackers and defenders
+
+	W_max = delta.defenders // 2  # Number of times W happened
+	L_max = delta.attackers // 2  # Number of times L happened
 
 	# Minimum number of T transitions needed to balance parity
-	T_min = deltaA % 2
+	T_min = delta.attackers % 2
 
-	# Maximum possible T transitions limited by available attackers/defenders
-	T_max = min(L_count, W_count) + T_min
+	# Maximum possible T transitions: each W/L pair can be replaced by 2 T's
+	T_max = 2 * min(L_max, W_max) + T_min
 
-	#print(f"DEBUG: start={start}, end={end}, deltaA={deltaA}, deltaD={deltaD}, T_min={T_min}, T_max={T_max}")
-	
-	total_prob = 0
-	for T_count in range(T_min, T_max + 1):
+	total_probability = Fraction(0)
+	for T_edges in range(T_min, T_max + 1, 2):
 		# To determine every path possible make sure we account for every possible arrangement of W, L, and T
-		# For T > T_min, every added T replaces one W and one L
-		adjusted_W = W_count - (T_count - T_min)
-		adjusted_L = L_count - (T_count - T_min)
-		
-		assert adjusted_W >= 0 and adjusted_L >= 0, f"Invalid W/L counts: start={start} end={end} W={adjusted_W}, L={adjusted_L}, T={T_count}"
-		
+		# One W and one L are replaced for every 2 T transitions added beyond T_min
+		W_edges = W_max - ((T_edges - T_min) // 2)
+		L_edges = L_max - ((T_edges - T_min) // 2)
+
+		assert W_edges >= 0 and L_edges >= 0, f"Invalid W/L counts: start={start} end={end} W={W_edges}, L={L_edges}, T={T_edges}"
+
 		# The multinomial coefficient counts the number of ways to arrange W, L, and T transitions in a sequence
 		# It is used instead of a simple permutation formula (nPm) because we are arranging repeated elements
-		total_transitions = adjusted_W + adjusted_L + T_count
-		permutations = (factorial(total_transitions) // 
-						(factorial(adjusted_W) * factorial(adjusted_L) * factorial(T_count)))
-		
+		total_edges = W_edges + L_edges + T_edges
+		multinomial = (factorial(total_edges) // 
+						(factorial(W_edges) * factorial(L_edges) * factorial(T_edges)))
+
 		# All permutations of this path have the same probability
-		p_path = (W ** adjusted_W) * (L ** adjusted_L) * (T ** T_count)
-		total_prob += permutations * p_path
-	
-	return total_prob
+		path_probability = (space.P_W ** W_edges) * (space.P_L ** L_edges) * (space.P_T ** T_edges)
+		total_probability += multinomial * path_probability
+
+	return total_probability
+
+class ProbabilitySpaceBoundary:
+	node: Node
+	dice: int
+	W_node: Node
+	T_node: Node | None
+	L_node: Node
+
+	def __init__(self, node: Node):
+		self.node = node
+		self.dice = min(min(3, node.attackers), min(2, node.defenders))
+		match self.dice:
+			case 2:
+				self.W_node = Node(node.attackers    , node.defenders - 2)
+				self.T_node = Node(node.attackers - 1, node.defenders - 1)
+				self.L_node = Node(node.attackers - 2, node.defenders    )
+			case 1:
+				self.W_node = Node(node.attackers    , node.defenders - 1)
+				self.T_node = None
+				self.L_node = Node(node.attackers - 1, node.defenders    )
+				assert node.space.T == 0 # Sanity Check
+			case _:
+				raise ValueError("This isn't a probability space boundary, it's a null boundary")
+
+	def is_boundary(self) -> bool:
+		return ((
+				self.W_node.has_edges() and
+				self.W_node.space != self.node.space
+			) or (
+				self.T_node and self.T_node.has_edges() and
+				self.T_node.space != self.node.space
+			) or (
+				self.L_node.has_edges() and
+				self.L_node.space != self.node.space
+			)
+		)
+
+	def traverse_edges(self):
+		"""Yield (node, probability) for edges"""
+		space = self.node.space
+		if self.W_node.has_edges():
+			yield (self.W_node, space.P_W)
+		if self.T_node and self.T_node.has_edges():
+			yield (self.T_node, space.P_T)
+		if self.L_node.has_edges():
+			yield (self.L_node, space.P_L)
+
+def compute_probability(start: Node, end: Node) -> Fraction:
+	# Handle terminal states where combat ends so we don't try and compute probability_space with 0 dice
+	if end.attackers == 0 or end.defenders == 0:
+		if end.attackers == 0 and end.defenders == 0:
+			return Fraction(0)  # Both can't reach 0
+
+		# We need to sum probability of all paths that lead to this terminal state
+		# A terminal boundary is the last node before reaching 0
+		total_probability = Fraction(0)
+
+		if end.defenders == 0:
+			for a in range(end.attackers, start.attackers + 1):
+				for d in [1, 2]: # First consider nodes that hit this end from losing 1 defender
+					if d == 2 and a < 2: # Then consider nodes that hit this end from losing 2 defenders
+						continue
+					terminal_node = Node(a, d)
+					if terminal_node.attackers <= start.attackers and terminal_node.defenders <= start.defenders:
+						prob_to_terminal = compute_probability(start, terminal_node)
+						# From terminal_node, must win to reach this end
+						total_probability += prob_to_terminal * terminal_node.space.P_W
+		else:  # end.attackers == 0
+			for d in range(end.defenders, start.defenders + 1):
+				for a in [1, 2]: # First consider nodes that hit this end from losing 1 attackers
+					if a == 2 and d < 2: # Then consider nodes that hit this end from losing 2 attackers
+						continue
+					terminal_node = Node(a, d)
+					if terminal_node.defenders <= start.defenders and terminal_node.attackers <= start.attackers:
+						prob_to_terminal = compute_probability(start, terminal_node)
+						# From terminal_node, must lose to reach end
+						total_probability += prob_to_terminal * terminal_node.space.P_L
+
+		return total_probability
+
+	# Handle the simple case early: both nodes in same probability space
+	if start.space == end.space:
+		return constant_space_probability(start, end)
+
+	# Complex case: path crosses multiple probability spaces (e.g., 3v2 -> 2v2 -> 1v1)
+	# Track cumulative probability of reaching each intermediary node across boundaries
+	reach_probability: dict[Node, Fraction] = defaultdict(lambda: Fraction(0))
+
+	# Identify all boundary nodes where at least one edge crosses into a different space
+	space_by_dice = [(3, 2), (2, 2), (3, 1), (2, 1), (1, 2), (1, 1)] # pre-sorted by dice descending, attackers.descending, defenders descending
+	boundaries_by_dice = {space: [] for space in space_by_dice}
+
+	# Generate all boundary nodes that could be between start and end
+	for a in range(end.attackers, start.attackers + 1):
+		for d in range(end.defenders, start.defenders + 1):
+			node = Node(a, d)
+			if node.attackers == 0 or node.defenders == 0:
+				continue
+			space = (min(3, node.attackers), min(2, node.defenders))
+			# Only track nodes at the boundary of their space
+			boundary = ProbabilitySpaceBoundary(node)
+			if boundary.is_boundary():
+				boundaries_by_dice[space].append(boundary)
+
+	# Process boundaries in descending dice order (3v2 first, then 2v2, etc.)
+	# This ensures we compute reach probabilities before they're needed
+	for space in space_by_dice:
+		for boundary in boundaries_by_dice[space]:
+			# Calculate probability of reaching this boundary node
+			if boundary.node.space == start.space:
+				reach_probability[boundary.node] = constant_space_probability(start, boundary.node)
+			else:
+				# Sum contributions from all previously-processed nodes in the same space
+				# (constant_space_probability handles paths within a uniform space)
+				for prev_node, prev_prob in reach_probability.items():
+					if prev_prob > 0 and prev_node.space == boundary.node.space:
+						reach_probability[boundary.node] += prev_prob * constant_space_probability(prev_node, boundary.node)
+
+			# Propagate probability across space boundaries
+			# Only edges that cross into a different space need explicit handling
+			# Edges that do not cross into a different space are counted by the multinomial coefficient of the other boundary nodes they lead to
+			node_prob = reach_probability[boundary.node]
+			for outcome, edge_probability in boundary.traverse_edges():
+				if outcome.space != boundary.node.space:
+					reach_probability[outcome] += node_prob * edge_probability
+
+	total_probability = Fraction(0)
+	for node, step_probability in reach_probability.items():
+		if step_probability > 0 and node.space == end.space:
+			total_probability += step_probability * constant_space_probability(node, end)
+		elif step_probability > 0:
+			# Check if any edges from this node reach end's space
+			boundary = ProbabilitySpaceBoundary(node)
+			for outcome, edge_probability in boundary.traverse_edges():
+				if outcome.space == end.space:
+					total_probability += step_probability * edge_probability * constant_space_probability(outcome, end)
+	return total_probability
 
 # Sum multiple paths in the hypothetical DAG together for a composite probability
-def WLT_union(start, ends, W, L, T):
-	total_prob = 0
+def paths_union(start: Node, ends: list[Node]):
+	total_prob = Fraction(0)
 	for end in ends:
-		total_prob += compute_probability(start, end, W, L, T)
+		total_prob += compute_probability(start, end)
 	return total_prob
 
-# Compute probabilities for the range [50, 75] to reach (2, n)
-# Why? if we consider attackers dropping to 2 as a loss then the error term for rolling fewer than 5 dice is not significant at this scale
-space = probability_space()
-probability_map = {i: WLT_union((i, 10), [(2, n) for n in range(1, 11)], space.W, space.L, space.T) for i in range(50, 76)}
+import unittest
+class TestProbabilities(unittest.TestCase):
+	def test_edge_crossing(self):
+		p = compute_probability(Node(75, 1), Node(75, 0))
+		expected = Fraction(15, 36)
+		self.assertEqual(p, expected)
 
-scales = [(1e15, "100 trillion"), (1e14, "10 trillion"), (1e13, "a trillion"),
-		  (1e12, "100 billion"), (1e10, "10 billion"), (1e9, "a billion"),
-		  (1e8, "100 million"), (1e7, "10 million"), (1e6, "a million"),
-		  (1e5, "100 thousand"), (1e4, "10 thousand"), (1e3, "a thousand"),
-		  (1e2, "a hundred")]
+		p = compute_probability(Node(75, 2), Node(75, 0))
+		expected = Fraction(885, 1296)
+		self.assertEqual(p, expected)
 
-for i in range(50, 76):
-	p = float(probability_map[i])
-	order = next((label for value, label in scales if p < 1/value), "<100")
-	print(f"p({i} lost): {p:.2e}, worse than 1 in {order}")
+		p = compute_probability(Node(75, 2), Node(74, 1))
+		expected = Fraction(2611, 7776)
+		self.assertEqual(p, expected)
+
+		p = compute_probability(Node(4, 2), Node(0, 2))
+		expected = Fraction(2890, 7776) * Fraction (581, 1296)
+		self.assertEqual(p, expected)
+
+		p = compute_probability(Node(2, 2), Node(0, 2))
+		expected = Fraction(2890, 7776) * Fraction (161, 216)
+		self.assertEqual(p, expected)
+
+		p = compute_probability(Node(3, 3), Node(0, 2))
+		expected = (
+			Fraction(2275, 7776) * Fraction (55, 216) * Fraction(161, 216) +
+			Fraction(2611, 7776) * Fraction (581, 1296)
+		)
+		self.assertEqual(p, expected)
+
+	def test_equals_one(self):
+		one = paths_union(Node(75, 10), [
+			*(Node(0, i) for i in range(1, 11)), # Start at 1 to avoid double counting (0, 0)
+			*(Node(i, 0) for i in range(0, 76)),
+		])
+		self.assertEqual(one, Fraction(1))
+
+def main():
+	# What range of probabilities we are interested in considering
+	lost_range = range(50, 76)
+	exact_probability_of_losses  = {i: Fraction(0) for i in lost_range} # Stores the probability of losing n troops including the tail end from <5 dice rolls
+	approx_probability_of_losses = {i: Fraction(0) for i in lost_range} # Stores the probability of losing n troops ignoring the tail end from <5 dice rolls
+
+	scales = [
+		(1e15, "100 trillion"), (1e14, "10 trillion"), (1e13, "a trillion"),
+		(1e12, "100 billion"),  (1e10, "10 billion"),  (1e9,  "a billion"),
+		(1e8,  "100 million"),  (1e7,  "10 million"),  (1e6,  "a million"),
+		(1e5,  "100 thousand"), (1e4,  "10 thousand"), (1e3,  "a thousand"),
+		(1e2, "a hundred")
+	]
+
+	for i in range(50, 76):
+		p = float(exact_probability_of_losses[i])
+		order = next((label for value, label in scales if p < 1/value), "<100")
+		print(f"p({i} lost): {p:.2e}, worse than 1 in {order}")
+
+if __name__ == '__main__':
+	unittest.main()
