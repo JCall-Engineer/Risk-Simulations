@@ -299,18 +299,6 @@ def paths_union(start: Node, ends: list[Node]):
 
 import unittest
 class TestProbabilities(unittest.TestCase):
-	"""
-	Cheat Sheet:
-
-	| Node   | W    | T    | L    | N    |
-	|--------|------|------|------|------|
-	| (3, 2) | 2890 | 2611 | 2275 | 7776 |
-	| (3, 1) | 885  | 0    | 441  | 1296 |
-	| (2, 2) | 295  | 420  | 581  | 1296 |
-	| (2, 1) | 125  | 0    | 91   | 216  |
-	| (1, 2) | 55   | 0    | 161  | 216  |
-	| (1, 1) | 15   | 0    | 21   | 36   |
-	"""
 	def test_crossing_space(self):
 		W_3v2, T_3v2, L_3v2 = probability_space(Node(3, 2))
 		W_3v1, T_3v1, L_3v1 = probability_space(Node(3, 1))
