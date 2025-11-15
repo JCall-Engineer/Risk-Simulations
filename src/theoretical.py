@@ -18,7 +18,7 @@ class ProbabilitySpace:
 	P_L: Fraction
 
 	def __iter__(self):
-		"""Allows unpacking as a tuple: W, T, L = space"""
+		"""Allows unpacking as a tuple: W, T, L = space (primarily used in tests)"""
 		return iter((self.P_W, self.P_T, self.P_L))
 
 class Node:
@@ -52,11 +52,23 @@ class Node:
 				raise ValueError(f"Cannot compute outcomes for {self}: no dice to roll")
 
 	def is_valid(self):
-		"""(0, 0) is invalid because no risk battle results in both attackers and defenders getting wiped out"""
+		"""
+		Check if this node represents a valid game state.
+
+		A node is invalid if:
+		- Either attackers or defenders is negative
+		- Both attackers and defenders are zero (no Risk battle can result in mutual annihilation)
+		"""
 		return not any(i < 0 for i in [self.attackers, self.defenders]) and self.attackers + self.defenders > 0
 
 	def has_edges(self):
-		"""Acts as a check for a valid probability space"""
+		"""
+		Check if this node has outgoing edges in the battle DAG.
+
+		Returns True only when both attackers and defenders are present, meaning
+		a battle can occur and transitions to other nodes are possible. Terminal
+		states (where one side has 0 troops) have no outgoing edges.
+		"""
 		return self.attackers > 0 and self.defenders > 0
 
 	@property
@@ -64,7 +76,7 @@ class Node:
 		return probability_space(self)
 
 	def __hash__(self):
-		"""Allows this class to be used as a dict key"""
+		"""Makes Node hashable so it can be used as a dict key or in sets"""
 		return hash((self.attackers, self.defenders))
 
 	def __eq__(self, other):
@@ -92,11 +104,26 @@ class Node:
 		"""Prints the same as a tuple: (a, d)"""
 		return f"({self.attackers}, {self.defenders})"
 
-# probability_space is going to be called *a lot* so cache the results
 computed_spaces: dict[Node, ProbabilitySpace] = {}
-
-# Counts all possible dice rolls and divides them into W L and T}
 def probability_space(attackers: int | tuple[int, int] | Node = 3, defenders: int = 2) -> ProbabilitySpace:
+	"""
+	Count all possible dice rolls and categorize them into Win, Tie, and Loss outcomes.
+
+	Computes the probability space for a given attacker/defender configuration by enumerating
+	all possible dice rolls and comparing outcomes according to Risk rules. Results are cached
+	since this function is called frequently during probability calculations.
+
+	Args:
+		attackers: Number of attacking dice (1-3), or a Node/tuple of (attackers, defenders)
+		defenders: Number of defending dice (1-2), ignored if attackers is a Node/tuple
+
+	ProbabilitySpace containing:
+		- name: The Node representing this configuration
+		- dice: Total number of dice rolled
+		- W, T, L: Count of wins, ties, losses
+		- N: Total possible outcomes
+		- P_W, P_T, P_L: Probabilities as Fractions
+	"""
 	if isinstance(attackers, (Node, tuple)):
 		attackers, defenders = attackers
 
@@ -170,8 +197,16 @@ for a in range(3):
 	for d in range(2):
 		probability_space(a + 1, d + 1)
 
-# Compute the probability of transitioning from `start` to `end` using combinatorial calculations
 def constant_space_probability(start: Node, end: Node) -> Fraction:
+	"""
+	Compute the probability of transitioning from start to end using combinatorial calculations.
+
+	This function is optimized specifically for the 3v2 probability space where the combinatorial
+	savings are significant. Technically it could work for 2v2, but the logic assumes every combat
+	results in exactly 2 troops lost (W_max, W_edges, L_max, L_edges all use //2). Modifying this
+	for other spaces provides negligible benefit compared to handling them uniformly with dynamic
+	programming. Let this function do what it's good at: 3v2, and nothing else.
+	"""
 	if (any(i < 0 for i in [start.attackers, start.defenders, end.attackers, end.defenders])):
 		raise ValueError(f"Negative troop counts are invalid: start={start}, end={end}")
 
@@ -180,8 +215,11 @@ def constant_space_probability(start: Node, end: Node) -> Fraction:
 	if (all(i == 0 for i in [end.attackers, end.defenders])):
 		raise ValueError(f"{end} is not a state that can be reached")
 
-	space = start.space
-	if (space != end.space):
+	space = computed_spaces[Node(3, 2)]
+	if start.space != space:
+		raise ValueError(f"This optimization only applies to 3v2, not {start.space.name}")
+
+	if end.space != space:
 		raise ValueError(f"The number of dice used changes between {start} and {end}, this function is unable to compute probability over a non-uniform probability space")
 
 	delta = start - end
@@ -220,23 +258,18 @@ def constant_space_probability(start: Node, end: Node) -> Fraction:
 
 	return total_probability
 
-DEBUG = False
 def compute_probability(start: Node, end: Node) -> Fraction:
 	if not start.is_valid() or not start.has_edges() or not end.is_valid():
-		if DEBUG: print('not valid')
 		return Fraction(0)
 
 	if start.attackers < end.attackers or start.defenders < end.defenders:
-		if DEBUG: print('gained troops')
 		return Fraction(0)
 
 	if start == end:
-		if DEBUG: print('same starting place')
 		return Fraction(1)
 
 	# Handle the simple case early: both nodes in 3v2 space
 	if end.has_edges() and start.space == end.space and start.space.name == Node(3, 2):
-		if DEBUG: print('constant space')
 		return constant_space_probability(start, end)
 
 	# Complex case: track probability using dynamic programming
@@ -245,7 +278,7 @@ def compute_probability(start: Node, end: Node) -> Fraction:
 	# We can shortcut across the 3v2 boundary (the largest space)
 	# This lists all nodes between start and end that have at least one edge that leaves 3v2
 	boundaries_3v2 = list(filter(lambda node: node.attackers <= start.attackers and node.defenders <= start.defenders, [
-		# See src/risk_pspace.py or out/pspace.png to aid in understanding the logic
+		# See src/visualization.py or out/visualization.png to aid in understanding the logic
 		Node(3, 2), # W -> victory, T -> 2v1, L -> 1v2
 		*(Node(3, d) for d in range(3, start.defenders + 1)),  # Right edge: L -> 1v2
 		*(Node(a, 2) for a in range(4, start.attackers + 1)),  # Bottom edge: W -> victory
@@ -254,10 +287,8 @@ def compute_probability(start: Node, end: Node) -> Fraction:
 		*(Node(a, 3) for a in range(5, start.attackers + 1)),  # One in from bottom edge: W -> 3v1
 	]))
 	for boundary in boundaries_3v2:
-		if DEBUG: print(f"Shortcut to {boundary}")
 		reach_probability[boundary] = constant_space_probability(start, boundary)
 	if len(boundaries_3v2) == 0:
-		if DEBUG: print("start cannot shortcut to a 3v2 boundary")
 		reach_probability[start] = Fraction(1)
 
 	# Process in topological order (high troops → low troops)
@@ -265,24 +296,18 @@ def compute_probability(start: Node, end: Node) -> Fraction:
 		for a in range(end.attackers, start.attackers + 1):
 			d = total - a
 			node = Node(a, d)
-			if DEBUG: print(f"Visiting {node}")
 
 			if d < end.defenders or d > start.defenders:
-				if DEBUG: print(f"\t - Not in [{end.defenders}, {start.defenders}]")
 				continue
 
 			if node not in reach_probability or reach_probability[node] == 0:
-				if DEBUG: print("\t - No path here")
 				continue
 
 			if not node.has_edges():
-				if DEBUG: print("\t - No edges to traverse")
 				continue
 
 			for outcome, edge_prob in node.outcomes():
 				assert outcome.is_valid()
-				if DEBUG: print(f"\t- Traversing: {outcome}")
-				if DEBUG and outcome == end: print("\t\t- It is our target")
 
 				# Ensure we don't double count 3v2 optimizations
 				if outcome not in boundaries_3v2:
@@ -290,8 +315,14 @@ def compute_probability(start: Node, end: Node) -> Fraction:
 
 	return reach_probability[end]
 
-# Sum multiple paths in the hypothetical DAG together for a composite probability
 def paths_union(start: Node, ends: list[Node]):
+	"""
+	Sum probabilities of multiple paths in the DAG to compute composite probability.
+
+	Used to calculate the probability of reaching any state in a set of end states.
+	For example, computing the probability of victory (reaching any state with 0 defenders)
+	or the probability of losing exactly N or more attackers.
+	"""
 	total_prob = Fraction(0)
 	for end in ends:
 		total_prob += compute_probability(start, end)
@@ -447,15 +478,8 @@ def main():
 		print(f"p({i} lost): {p:.2e}, worse than 1 in {order}")
 
 if __name__ == '__main__':
-	test = True
+	test = False
 	if test:
 		unittest.main()
 	else:
-		DEBUG = True
-		outcomes = [
-			*(Node(0, i) for i in range(1, 11)),
-			*(Node(i, 0) for i in range(1, 76)),
-		]
-		print(f"Outcomes: {outcomes}")
-		p = paths_union(Node(75, 10), outcomes)
-		print(f"P = {p} approx. {float(p)}")
+		print_probability_table()
