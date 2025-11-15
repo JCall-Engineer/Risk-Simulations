@@ -44,6 +44,8 @@ class Node:
 				# 1vn or nv1: 1 dice - only W and L possible
 				yield (Node(self.attackers, self.defenders - 1), self.space.P_W)
 				yield (Node(self.attackers - 1, self.defenders), self.space.P_L)
+			case 0:
+				raise ValueError(f"Cannot compute outcomes for {self}: no dice to roll")
 
 	def is_valid(self):
 		"""(0, 0) is invalid because no risk battle results in both attackers and defenders getting wiped out"""
