@@ -225,5 +225,5 @@ pyplot.suptitle('Risk Dice Rolling Scenarios', fontsize=16, weight='bold')
 pyplot.tight_layout()
 
 figure.patch.set_alpha(0)
-pyplot.savefig('out/risk_pspace.png', dpi=300, bbox_inches='tight', facecolor='none', pad_inches=0.5)
+pyplot.savefig('out/visualization.png', dpi=300, bbox_inches='tight', facecolor='none', pad_inches=0.5)
 pyplot.show()
