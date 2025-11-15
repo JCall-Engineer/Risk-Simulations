@@ -225,4 +225,5 @@ pyplot.suptitle('Risk Dice Rolling Scenarios', fontsize=16, weight='bold')
 pyplot.tight_layout()
 
 pyplot.savefig('out/visualization.png', dpi=300, bbox_inches='tight', facecolor='white', pad_inches=0.5)
+pyplot.savefig('out/visualization.svg', format='svg', bbox_inches='tight', pad_inches=0.5)
 pyplot.show()
