@@ -66,7 +66,7 @@ class Node:
 	def __hash__(self):
 		"""Allows this class to be used as a dict key"""
 		return hash((self.attackers, self.defenders))
-	
+
 	def __eq__(self, other):
 		if isinstance(other, Node):
 			return self.attackers == other.attackers and self.defenders == other.defenders
@@ -225,7 +225,7 @@ def compute_probability(start: Node, end: Node) -> Fraction:
 	if not start.is_valid() or not start.has_edges() or not end.is_valid():
 		if DEBUG: print('not valid')
 		return Fraction(0)
-	
+
 	if start.attackers < end.attackers or start.defenders < end.defenders:
 		if DEBUG: print('gained troops')
 		return Fraction(0)
@@ -395,6 +395,37 @@ class TestProbabilities(unittest.TestCase):
 			*(Node(i, 0) for i in range(1, 76)),
 		])
 		self.assertEqual(one, Fraction(1))
+
+def print_probability_table():
+	rows = []
+	for a in range(3, 0, -1):
+		for d in range(2, 0, -1):
+			space = probability_space(Node(a, d))
+
+			w_pct = f" (~{round(float(space.P_W) * 100)}%)" if space.W > 0 else ""
+			t_pct = f" (~{round(float(space.P_T) * 100)}%)" if space.T > 0 else ""
+			l_pct = f" (~{round(float(space.P_L) * 100)}%)" if space.L > 0 else ""
+
+			rows.append([
+				str(space.name),
+				f"{space.W}{w_pct}",
+				f"{space.T}{t_pct}",
+				f"{space.L}{l_pct}",
+				str(space.N)
+			])
+
+	# Calculate max width for each column
+	widths = [max(len(row[i]) for row in rows) for i in range(5)]
+	headers = ["Node", "W", "T", "L", "N"]
+	widths = [max(widths[i], len(headers[i])) for i in range(5)]
+
+	# Print header
+	print("| " + " | ".join(h.ljust(widths[i]) for i, h in enumerate(headers)) + " |")
+	print("|" + "|".join("-" * (w + 2) for w in widths) + "|")
+
+	# Print rows
+	for row in rows:
+		print("| " + " | ".join(row[i].ljust(widths[i]) for i in range(5)) + " |")
 
 def main():
 	# What range of probabilities we are interested in considering
