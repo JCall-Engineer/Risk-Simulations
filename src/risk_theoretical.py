@@ -243,13 +243,13 @@ def compute_probability(start: Node, end: Node) -> Fraction:
 	reach_probability: dict[Node, Fraction] = defaultdict(lambda: Fraction(0))
 
 	# We can shortcut across the 3v2 boundary (the largest space)
-	# Use (4, 3) as the corner boundary since a win or a loss traverses space
-	# Failing to use dynamic programming for (3, 2) will cause double counting
+	# This lists all nodes between start and end that have at least one edge that leaves 3v2
 	boundaries_3v2 = list(filter(lambda node: node.attackers <= start.attackers and node.defenders <= start.defenders, [
-		*(Node(a, 3) for a in range(4, start.attackers + 1)),
-		*(Node(4, d) for d in range(4, start.defenders + 1)), # The previous generator includes (4, 3) don't add it twice
+		*(Node(3, d) for d in range(2, start.defenders + 1)),  # Right edge (see pspace.png)
+		*(Node(a, 2) for a in range(4, start.attackers + 1)),  # Bottom edge (excluding (3,2) which was counted in right edge)
+		*(Node(4, d) for d in range(3, start.defenders + 1)),  # One in from right edge (L transitions to 2v2)
+		*(Node(a, 3) for a in range(5, start.attackers + 1)),  # One in from bottom edge (excluding (4,3) which was counted in 1 in from right edge; W transitions to 3v1)
 	]))
-	boundaries_3v2 = [] # The shortcut isn't quite correct, disabling temporarily
 	for boundary in boundaries_3v2:
 		if DEBUG: print(f"Shortcut to {boundary}")
 		reach_probability[boundary] = constant_space_probability(start, boundary)
@@ -281,7 +281,9 @@ def compute_probability(start: Node, end: Node) -> Fraction:
 				if DEBUG: print(f"\t- Traversing: {outcome}")
 				if DEBUG and outcome == end: print("\t\t- It is our target")
 
-				reach_probability[outcome] += reach_probability[node] * edge_prob
+				# Ensure we don't double count 3v2 optimizations
+				if outcome not in boundaries_3v2:
+					reach_probability[outcome] += reach_probability[node] * edge_prob
 
 	return reach_probability[end]
 
