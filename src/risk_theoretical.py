@@ -215,95 +215,51 @@ def constant_space_probability(start: Node, end: Node) -> Fraction:
 	return total_probability
 
 def compute_probability(start: Node, end: Node) -> Fraction:
-	# Handle terminal states where combat ends so we don't try and compute probability_space with 0 dice
-	if end.attackers == 0 or end.defenders == 0:
-		if end.attackers == 0 and end.defenders == 0:
-			return Fraction(0)  # Both can't reach 0
+	if not start.is_valid() or not start.has_edges() or not end.is_valid():
+		return Fraction(0)
+	
+	if start.attackers > end.attackers or start.defenders > end.defenders:
+		return Fraction(0)
 
-		# We need to sum probability of all paths that lead to this terminal state
-		# A terminal boundary is the last node before reaching 0
-		total_probability = Fraction(0)
-
-		if end.defenders == 0:
-			for a in range(end.attackers, start.attackers + 1):
-				for d in [1, 2]: # First consider nodes that hit this end from losing 1 defender
-					if d == 2 and a < 2: # Then consider nodes that hit this end from losing 2 defenders
-						continue
-					terminal_node = Node(a, d)
-					if terminal_node.attackers <= start.attackers and terminal_node.defenders <= start.defenders:
-						prob_to_terminal = compute_probability(start, terminal_node)
-						# From terminal_node, must win to reach this end
-						total_probability += prob_to_terminal * terminal_node.space.P_W
-		else:  # end.attackers == 0
-			for d in range(end.defenders, start.defenders + 1):
-				for a in [1, 2]: # First consider nodes that hit this end from losing 1 attackers
-					if a == 2 and d < 2: # Then consider nodes that hit this end from losing 2 attackers
-						continue
-					terminal_node = Node(a, d)
-					if terminal_node.defenders <= start.defenders and terminal_node.attackers <= start.attackers:
-						prob_to_terminal = compute_probability(start, terminal_node)
-						# From terminal_node, must lose to reach end
-						total_probability += prob_to_terminal * terminal_node.space.P_L
-
-		return total_probability
+	if start == end:
+		return Fraction(1)
 
 	# Handle the simple case early: both nodes in same probability space
-	if start.space == end.space:
+	if end.has_edges() and start.space == end.space:
 		return constant_space_probability(start, end)
 
-	# Complex case: path crosses multiple probability spaces (e.g., 3v2 -> 2v2 -> 1v1)
-	# Track cumulative probability of reaching each intermediary node across boundaries
+	# Complex case: track probability using dynamic programming
 	reach_probability: dict[Node, Fraction] = defaultdict(lambda: Fraction(0))
 
-	# Identify all boundary nodes where at least one edge crosses into a different space
-	space_by_dice = [(3, 2), (2, 2), (3, 1), (2, 1), (1, 2), (1, 1)] # pre-sorted by dice descending, attackers.descending, defenders descending
-	boundaries_by_dice = {space: [] for space in space_by_dice}
+	if start.space.name != Node(3, 2):
+		reach_probability[start] = Fraction(1)
+	else:
+		# We can shortcut across the 3v2 boundary (the largest space)
+		# Use (4, 3) as the corner boundary since a win or a loss traverses space
+		# Failing to use dynamic programming for (3, 2) will cause double counting
+		boundaries_3v2 = [
+			 *(Node(a, 3) for a in range(4, start.attackers + 1)),
+			 *(Node(4, d) for d in range(4, start.defenders + 1)), # The previous generator includes (4, 3) don't add it twice
+		]
+		for boundary in boundaries_3v2:
+			reach_probability[boundary] = constant_space_probability(start, boundary)
 
-	# Generate all boundary nodes that could be between start and end
-	for a in range(end.attackers, start.attackers + 1):
-		for d in range(end.defenders, start.defenders + 1):
-			node = Node(a, d)
-			if node.attackers == 0 or node.defenders == 0:
+	# Process in topological order (high troops → low troops)
+	for total in range(start.attackers + start.defenders, end.attackers + end.defenders - 1, -1):
+		for a in range(end.attackers, start.attackers + 1):
+			d = total - a
+			if d < end.defenders or d > start.defenders:
 				continue
-			space = (min(3, node.attackers), min(2, node.defenders))
-			# Only track nodes at the boundary of their space
-			boundary = ProbabilitySpaceBoundary(node)
-			if boundary.is_boundary():
-				boundaries_by_dice[space].append(boundary)
 
-	# Process boundaries in descending dice order (3v2 first, then 2v2, etc.)
-	# This ensures we compute reach probabilities before they're needed
-	for space in space_by_dice:
-		for boundary in boundaries_by_dice[space]:
-			# Calculate probability of reaching this boundary node
-			if boundary.node.space == start.space:
-				reach_probability[boundary.node] = constant_space_probability(start, boundary.node)
-			else:
-				# Sum contributions from all previously-processed nodes in the same space
-				# (constant_space_probability handles paths within a uniform space)
-				for prev_node, prev_prob in reach_probability.items():
-					if prev_prob > 0 and prev_node.space == boundary.node.space:
-						reach_probability[boundary.node] += prev_prob * constant_space_probability(prev_node, boundary.node)
+			node = Node(a, d)
+			if node not in reach_probability or reach_probability[node] == 0:
+				continue
 
-			# Propagate probability across space boundaries
-			# Only edges that cross into a different space need explicit handling
-			# Edges that do not cross into a different space are counted by the multinomial coefficient of the other boundary nodes they lead to
-			node_prob = reach_probability[boundary.node]
-			for outcome, edge_probability in boundary.traverse_edges():
-				if outcome.space != boundary.node.space:
-					reach_probability[outcome] += node_prob * edge_probability
+			for outcome, edge_prob in node.outcomes():
+				if outcome.is_valid():
+					reach_probability[outcome] += reach_probability[node] * edge_prob
 
-	total_probability = Fraction(0)
-	for node, step_probability in reach_probability.items():
-		if step_probability > 0 and node.space == end.space:
-			total_probability += step_probability * constant_space_probability(node, end)
-		elif step_probability > 0:
-			# Check if any edges from this node reach end's space
-			boundary = ProbabilitySpaceBoundary(node)
-			for outcome, edge_probability in boundary.traverse_edges():
-				if outcome.space == end.space:
-					total_probability += step_probability * edge_probability * constant_space_probability(outcome, end)
-	return total_probability
+	return reach_probability[end]
 
 # Sum multiple paths in the hypothetical DAG together for a composite probability
 def paths_union(start: Node, ends: list[Node]):
