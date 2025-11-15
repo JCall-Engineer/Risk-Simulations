@@ -1,3 +1,4 @@
+from __future__ import annotations
 from itertools import product
 from fractions import Fraction
 from math import factorial
@@ -6,6 +7,8 @@ from collections import defaultdict
 
 @dataclass
 class ProbabilitySpace:
+	name: Node
+	dice: int
 	W: int
 	T: int
 	L: int
@@ -67,8 +70,45 @@ class Node:
 	def space(self) -> ProbabilitySpace:
 		return probability_space(self)
 
+class ProbabilitySpaceBoundary:
+	node: Node
+	dice: int
+	W_node: Node
+	T_node: Node | None
+	L_node: Node
+
+	def __init__(self, node: Node):
+		self.node = node
+		self.dice = min(min(3, node.attackers), min(2, node.defenders))
+		match self.dice:
+			case 2:
+				self.W_node = Node(node.attackers    , node.defenders - 2)
+				self.T_node = Node(node.attackers - 1, node.defenders - 1)
+				self.L_node = Node(node.attackers - 2, node.defenders    )
+			case 1:
+				self.W_node = Node(node.attackers    , node.defenders - 1)
+				self.T_node = None
+				self.L_node = Node(node.attackers - 1, node.defenders    )
+				assert node.space.T == 0 # Sanity Check
+			case _:
+				raise ValueError("This isn't a probability space boundary, it's a null boundary")
+
+	def is_boundary(self) -> bool:
+		return any(
+			not outcome.has_edges() or outcome.space != self.node.space
+			for outcome, _ in self.traverse_edges()
+		)
+
+	def traverse_edges(self):
+		"""Yield (node, probability) for edges"""
+		space = self.node.space
+		yield (self.W_node, space.P_W)
+		if self.T_node:
+			yield (self.T_node, space.P_T)
+		yield (self.L_node, space.P_L)
+
 # probability_space is going to be called *a lot* so cache the results
-computed_spaces = {}
+computed_spaces: dict[Node, ProbabilitySpace] = {}
 
 # Counts all possible dice rolls and divides them into W L and T}
 def probability_space(attackers: int | tuple[int, int] | Node = 3, defenders: int = 2) -> ProbabilitySpace:
@@ -81,7 +121,7 @@ def probability_space(attackers: int | tuple[int, int] | Node = 3, defenders: in
 
 	assert attackers > 0 and defenders > 0 and dice >= 2
 
-	index = (attackers, defenders)
+	index = Node(attackers, defenders)
 	if index in computed_spaces:
 		return computed_spaces[index]
 
@@ -125,6 +165,8 @@ def probability_space(attackers: int | tuple[int, int] | Node = 3, defenders: in
 
 	assert W + L + T == N  # Sanity check
 	result = ProbabilitySpace(
+		name=index,
+		dice=dice,
 		W = W,
 		T = T,
 		L = L,
@@ -135,6 +177,11 @@ def probability_space(attackers: int | tuple[int, int] | Node = 3, defenders: in
 	)
 	computed_spaces[index] = result
 	return result
+
+# Precompute the probability spaces
+for a in range(3):
+	for d in range(2):
+		probability_space(a + 1, d + 1)
 
 # Compute the probability of transitioning from `start` to `end` using combinatorial calculations
 def constant_space_probability(start: Node, end: Node) -> Fraction:
@@ -185,52 +232,6 @@ def constant_space_probability(start: Node, end: Node) -> Fraction:
 		total_probability += multinomial * path_probability
 
 	return total_probability
-
-class ProbabilitySpaceBoundary:
-	node: Node
-	dice: int
-	W_node: Node
-	T_node: Node | None
-	L_node: Node
-
-	def __init__(self, node: Node):
-		self.node = node
-		self.dice = min(min(3, node.attackers), min(2, node.defenders))
-		match self.dice:
-			case 2:
-				self.W_node = Node(node.attackers    , node.defenders - 2)
-				self.T_node = Node(node.attackers - 1, node.defenders - 1)
-				self.L_node = Node(node.attackers - 2, node.defenders    )
-			case 1:
-				self.W_node = Node(node.attackers    , node.defenders - 1)
-				self.T_node = None
-				self.L_node = Node(node.attackers - 1, node.defenders    )
-				assert node.space.T == 0 # Sanity Check
-			case _:
-				raise ValueError("This isn't a probability space boundary, it's a null boundary")
-
-	def is_boundary(self) -> bool:
-		return ((
-				self.W_node.has_edges() and
-				self.W_node.space != self.node.space
-			) or (
-				self.T_node and self.T_node.has_edges() and
-				self.T_node.space != self.node.space
-			) or (
-				self.L_node.has_edges() and
-				self.L_node.space != self.node.space
-			)
-		)
-
-	def traverse_edges(self):
-		"""Yield (node, probability) for edges"""
-		space = self.node.space
-		if self.W_node.has_edges():
-			yield (self.W_node, space.P_W)
-		if self.T_node and self.T_node.has_edges():
-			yield (self.T_node, space.P_T)
-		if self.L_node.has_edges():
-			yield (self.L_node, space.P_L)
 
 def compute_probability(start: Node, end: Node) -> Fraction:
 	# Handle terminal states where combat ends so we don't try and compute probability_space with 0 dice
