@@ -388,6 +388,12 @@ class TestProbabilities(unittest.TestCase):
 		)
 		self.assertEqual(p, expected)
 
+		p = compute_probability(Node(3, 3), Node(1, 1))
+		expected = (
+			T_2v2 * T_3v2 +
+			L_2v1 * L_3v1 * W_3v2 +
+			W_1v2 * W_1v2 * L_3v2
+		)
 
 	def test_total_one(self):
 		one = paths_union(Node(75, 10), [
