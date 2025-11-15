@@ -220,50 +220,68 @@ def constant_space_probability(start: Node, end: Node) -> Fraction:
 
 	return total_probability
 
+DEBUG = False
 def compute_probability(start: Node, end: Node) -> Fraction:
 	if not start.is_valid() or not start.has_edges() or not end.is_valid():
+		if DEBUG: print('not valid')
 		return Fraction(0)
 	
-	if start.attackers > end.attackers or start.defenders > end.defenders:
+	if start.attackers < end.attackers or start.defenders < end.defenders:
+		if DEBUG: print('gained troops')
 		return Fraction(0)
 
 	if start == end:
+		if DEBUG: print('same starting place')
 		return Fraction(1)
 
-	# Handle the simple case early: both nodes in same probability space
-	if end.has_edges() and start.space == end.space:
+	# Handle the simple case early: both nodes in 3v2 space
+	if end.has_edges() and start.space == end.space and start.space.name == Node(3, 2):
+		if DEBUG: print('constant space')
 		return constant_space_probability(start, end)
 
 	# Complex case: track probability using dynamic programming
 	reach_probability: dict[Node, Fraction] = defaultdict(lambda: Fraction(0))
 
-	if start.space.name != Node(3, 2):
+	# We can shortcut across the 3v2 boundary (the largest space)
+	# Use (4, 3) as the corner boundary since a win or a loss traverses space
+	# Failing to use dynamic programming for (3, 2) will cause double counting
+	boundaries_3v2 = list(filter(lambda node: node.attackers <= start.attackers and node.defenders <= start.defenders, [
+		*(Node(a, 3) for a in range(4, start.attackers + 1)),
+		*(Node(4, d) for d in range(4, start.defenders + 1)), # The previous generator includes (4, 3) don't add it twice
+	]))
+	boundaries_3v2 = [] # The shortcut isn't quite correct, disabling temporarily
+	for boundary in boundaries_3v2:
+		if DEBUG: print(f"Shortcut to {boundary}")
+		reach_probability[boundary] = constant_space_probability(start, boundary)
+	if len(boundaries_3v2) == 0:
+		if DEBUG: print("start cannot shortcut to a 3v2 boundary")
 		reach_probability[start] = Fraction(1)
-	else:
-		# We can shortcut across the 3v2 boundary (the largest space)
-		# Use (4, 3) as the corner boundary since a win or a loss traverses space
-		# Failing to use dynamic programming for (3, 2) will cause double counting
-		boundaries_3v2 = [
-			 *(Node(a, 3) for a in range(4, start.attackers + 1)),
-			 *(Node(4, d) for d in range(4, start.defenders + 1)), # The previous generator includes (4, 3) don't add it twice
-		]
-		for boundary in boundaries_3v2:
-			reach_probability[boundary] = constant_space_probability(start, boundary)
 
 	# Process in topological order (high troops → low troops)
 	for total in range(start.attackers + start.defenders, end.attackers + end.defenders - 1, -1):
 		for a in range(end.attackers, start.attackers + 1):
 			d = total - a
+			node = Node(a, d)
+			if DEBUG: print(f"Visiting {node}")
+
 			if d < end.defenders or d > start.defenders:
+				if DEBUG: print(f"\t - Not in [{end.defenders}, {start.defenders}]")
 				continue
 
-			node = Node(a, d)
 			if node not in reach_probability or reach_probability[node] == 0:
+				if DEBUG: print("\t - No path here")
+				continue
+
+			if not node.has_edges():
+				if DEBUG: print("\t - No edges to traverse")
 				continue
 
 			for outcome, edge_prob in node.outcomes():
-				if outcome.is_valid():
-					reach_probability[outcome] += reach_probability[node] * edge_prob
+				assert outcome.is_valid()
+				if DEBUG: print(f"\t- Traversing: {outcome}")
+				if DEBUG and outcome == end: print("\t\t- It is our target")
+
+				reach_probability[outcome] += reach_probability[node] * edge_prob
 
 	return reach_probability[end]
 
