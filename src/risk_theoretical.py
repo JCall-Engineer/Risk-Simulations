@@ -17,6 +17,10 @@ class ProbabilitySpace:
 	P_T: Fraction
 	P_L: Fraction
 
+	def __iter__(self):
+		"""Allows unpacking as a tuple: W, T, L = space"""
+		return iter((self.P_W, self.P_T, self.P_L))
+
 class Node:
 	attackers: int
 	defenders: int
@@ -181,7 +185,7 @@ def constant_space_probability(start: Node, end: Node) -> Fraction:
 		raise ValueError(f"The number of dice used changes between {start} and {end}, this function is unable to compute probability over a non-uniform probability space")
 
 	delta = start - end
-	if (delta.attackers > 0 or delta.defenders > 0):
+	if (delta.attackers < 0 or delta.defenders < 0):
 		return Fraction(0) # It is impossible for one size to gain troops in combat
 	if (all(i >= 2 for i in [start.attackers, start.defenders]) and ((delta.attackers + delta.defenders) % 2 > 0)):
 		return Fraction(0) # It is impossible for an odd number of troops to be lost in a battle with 2+ attackers and defenders
@@ -272,38 +276,106 @@ def paths_union(start: Node, ends: list[Node]):
 
 import unittest
 class TestProbabilities(unittest.TestCase):
-	def test_edge_crossing(self):
-		p = compute_probability(Node(75, 1), Node(75, 0))
-		expected = Fraction(15, 36)
-		self.assertEqual(p, expected)
+	"""
+	Cheat Sheet:
 
+	| Node   | W    | T    | L    | N    |
+	|--------|------|------|------|------|
+	| (3, 2) | 2890 | 2611 | 2275 | 7776 |
+	| (3, 1) | 885  | 0    | 441  | 1296 |
+	| (2, 2) | 295  | 420  | 581  | 1296 |
+	| (2, 1) | 125  | 0    | 91   | 216  |
+	| (1, 2) | 55   | 0    | 161  | 216  |
+	| (1, 1) | 15   | 0    | 21   | 36   |
+	"""
+	def test_crossing_space(self):
+		W_3v2, T_3v2, L_3v2 = probability_space(Node(3, 2))
+		W_3v1, T_3v1, L_3v1 = probability_space(Node(3, 1))
+		W_2v2, T_2v2, L_2v2 = probability_space(Node(2, 2))
+		W_2v1, T_2v1, L_2v1 = probability_space(Node(2, 1))
+		W_1v2, T_1v2, L_1v2 = probability_space(Node(1, 2))
+		W_1v1, T_1v1, L_1v1 = probability_space(Node(1, 1))
+
+		# No ties with one dice
+		self.assertEqual(T_3v1, Fraction(0))
+		self.assertEqual(T_2v1, Fraction(0))
+		self.assertEqual(T_1v1, Fraction(0))
+		self.assertEqual(T_1v2, Fraction(0))
+
+		# 3v3 transitions
 		p = compute_probability(Node(75, 2), Node(75, 0))
-		expected = Fraction(885, 1296)
-		self.assertEqual(p, expected)
+		self.assertEqual(p, W_3v2)
 
-		p = compute_probability(Node(75, 2), Node(74, 1))
-		expected = Fraction(2611, 7776)
-		self.assertEqual(p, expected)
+		p = compute_probability(Node(3, 2), Node(2, 1))
+		self.assertEqual(p, T_3v2)
 
-		p = compute_probability(Node(4, 2), Node(0, 2))
-		expected = Fraction(2890, 7776) * Fraction (581, 1296)
-		self.assertEqual(p, expected)
+		p = compute_probability(Node(4, 10), Node(2, 10))
+		self.assertEqual(p, L_3v2)
+
+		# 3v1 transitions
+		p = compute_probability(Node(75, 1), Node(75, 0))
+		self.assertEqual(p, W_3v1)
+
+		p = compute_probability(Node(3, 1), Node(2, 1))
+		self.assertEqual(p, L_3v1)
+
+		# 2v2 transitions
+		p = compute_probability(Node(2, 2), Node(2, 0))
+		self.assertEqual(p, W_2v2)
+
+		p = compute_probability(Node(2, 2), Node(1, 1))
+		self.assertEqual(p, T_2v2)
 
 		p = compute_probability(Node(2, 2), Node(0, 2))
-		expected = Fraction(2890, 7776) * Fraction (161, 216)
-		self.assertEqual(p, expected)
+		self.assertEqual(p, L_2v2)
 
-		p = compute_probability(Node(3, 3), Node(0, 2))
+		# 2v1 transitions
+		p = compute_probability(Node(2, 1), Node(2, 0))
+		self.assertEqual(p, W_2v1)
+
+		p = compute_probability(Node(2, 1), Node(1, 1))
+		self.assertEqual(p, L_2v1)
+
+		# 1v2 transitions
+		p = compute_probability(Node(1, 10), Node(1, 9))
+		self.assertEqual(p, W_1v2)
+
+		p = compute_probability(Node(1, 10), Node(0, 10))
+		self.assertEqual(p, L_1v2)
+
+		# 1v1 transitions
+		p = compute_probability(Node(1, 1), Node(1, 0))
+		self.assertEqual(p, W_1v1)
+
+		p = compute_probability(Node(1, 1), Node(0, 1))
+		self.assertEqual(p, L_1v1)
+
+	def test_compound_paths(self):
+		W_3v2, T_3v2, L_3v2 = probability_space(Node(3, 2))
+		W_3v1, T_3v1, L_3v1 = probability_space(Node(3, 1))
+		W_2v2, T_2v2, L_2v2 = probability_space(Node(2, 2))
+		W_2v1, T_2v1, L_2v1 = probability_space(Node(2, 1))
+		W_1v2, T_1v2, L_1v2 = probability_space(Node(1, 2))
+		W_1v1, T_1v1, L_1v1 = probability_space(Node(1, 1))
+
+		# No ties with one dice
+		self.assertEqual(T_3v1, Fraction(0))
+		self.assertEqual(T_2v1, Fraction(0))
+		self.assertEqual(T_1v1, Fraction(0))
+		self.assertEqual(T_1v2, Fraction(0))
+
+		p = compute_probability(Node(4, 2), Node(2, 1))
 		expected = (
-			Fraction(2275, 7776) * Fraction (55, 216) * Fraction(161, 216) +
-			Fraction(2611, 7776) * Fraction (581, 1296)
+			T_3v2 * L_3v1
 		)
 		self.assertEqual(p, expected)
 
-	def test_equals_one(self):
+
+	def test_total_one(self):
 		one = paths_union(Node(75, 10), [
-			*(Node(0, i) for i in range(1, 11)), # Start at 1 to avoid double counting (0, 0)
-			*(Node(i, 0) for i in range(0, 76)),
+			# Don't include (0, 0), not valid anyways
+			*(Node(0, i) for i in range(1, 11)),
+			*(Node(i, 0) for i in range(1, 76)),
 		])
 		self.assertEqual(one, Fraction(1))
 
@@ -327,4 +399,15 @@ def main():
 		print(f"p({i} lost): {p:.2e}, worse than 1 in {order}")
 
 if __name__ == '__main__':
-	unittest.main()
+	test = True
+	if test:
+		unittest.main()
+	else:
+		DEBUG = True
+		outcomes = [
+			*(Node(0, i) for i in range(1, 11)),
+			*(Node(i, 0) for i in range(1, 76)),
+		]
+		print(f"Outcomes: {outcomes}")
+		p = paths_union(Node(75, 10), outcomes)
+		print(f"P = {p} approx. {float(p)}")
