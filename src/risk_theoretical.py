@@ -245,10 +245,13 @@ def compute_probability(start: Node, end: Node) -> Fraction:
 	# We can shortcut across the 3v2 boundary (the largest space)
 	# This lists all nodes between start and end that have at least one edge that leaves 3v2
 	boundaries_3v2 = list(filter(lambda node: node.attackers <= start.attackers and node.defenders <= start.defenders, [
-		*(Node(3, d) for d in range(2, start.defenders + 1)),  # Right edge (see pspace.png)
-		*(Node(a, 2) for a in range(4, start.attackers + 1)),  # Bottom edge (excluding (3,2) which was counted in right edge)
-		*(Node(4, d) for d in range(3, start.defenders + 1)),  # One in from right edge (L transitions to 2v2)
-		*(Node(a, 3) for a in range(5, start.attackers + 1)),  # One in from bottom edge (excluding (4,3) which was counted in 1 in from right edge; W transitions to 3v1)
+		# See src/risk_pspace.py or out/pspace.png to aid in understanding the logic
+		Node(3, 2), # W -> victory, T -> 2v1, L -> 1v2
+		*(Node(3, d) for d in range(3, start.defenders + 1)),  # Right edge: L -> 1v2
+		*(Node(a, 2) for a in range(4, start.attackers + 1)),  # Bottom edge: W -> victory
+		Node(4, 3), # W -> 3v1, T -> 3v2 (later ignored), L -> 2v2
+		*(Node(4, d) for d in range(4, start.defenders + 1)),  # One in from right edge: L -> 2v2
+		*(Node(a, 3) for a in range(5, start.attackers + 1)),  # One in from bottom edge: W -> 3v1
 	]))
 	for boundary in boundaries_3v2:
 		if DEBUG: print(f"Shortcut to {boundary}")
