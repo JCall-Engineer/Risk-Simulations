@@ -21,18 +21,6 @@ class Node:
 	attackers: int
 	defenders: int
 
-	# Required so this class can be used as a dict key
-	def __hash__(self):
-		return hash((self.attackers, self.defenders))
-	
-	def __eq__(self, other):
-		if isinstance(other, Node):
-			return self.attackers == other.attackers and self.defenders == other.defenders
-		if isinstance(other, tuple):
-			if len(other) != 2: return False
-			return self.attackers == other[0] and self.defenders == other[1]
-		return False
-
 	# Cast from tuple
 	def __init__(self, *args, **kwargs):
 		if len(args) == 1 and isinstance(args[0], tuple):
@@ -43,8 +31,46 @@ class Node:
 			self.attackers = kwargs.get('attackers', 0)
 			self.defenders = kwargs.get('defenders', 0)
 
-	# Allow a handy delta
+	def outcomes(self):
+		"""Yield (outcome_node, probability) for all possible battle outcomes"""
+		match min(2, self.attackers, self.defenders): # At most 2 dice can be compared
+			case 2:
+				# 3v2, or 2v2: 2 dice - W, T, L possible
+				yield (Node(self.attackers, self.defenders - 2), self.space.P_W)
+				if self.space.T > 0:
+					yield (Node(self.attackers - 1, self.defenders - 1), self.space.P_T)
+				yield (Node(self.attackers - 2, self.defenders), self.space.P_L)
+			case 1:
+				# 1vn or nv1: 1 dice - only W and L possible
+				yield (Node(self.attackers, self.defenders - 1), self.space.P_W)
+				yield (Node(self.attackers - 1, self.defenders), self.space.P_L)
+
+	def is_valid(self):
+		"""(0, 0) is invalid because no risk battle results in both attackers and defenders getting wiped out"""
+		return not any(i < 0 for i in [self.attackers, self.defenders]) and self.attackers + self.defenders > 0
+
+	def has_edges(self):
+		"""Acts as a check for a valid probability space"""
+		return self.attackers > 0 and self.defenders > 0
+
+	@property
+	def space(self) -> ProbabilitySpace:
+		return probability_space(self)
+
+	def __hash__(self):
+		"""Allows this class to be used as a dict key"""
+		return hash((self.attackers, self.defenders))
+	
+	def __eq__(self, other):
+		if isinstance(other, Node):
+			return self.attackers == other.attackers and self.defenders == other.defenders
+		if isinstance(other, tuple):
+			if len(other) != 2: return False
+			return self.attackers == other[0] and self.defenders == other[1]
+		return False
+
 	def __sub__(self, other):
+		"""Allows a handy delta = start - end"""
 		if isinstance(other, Node):
 			return Node(
 				self.attackers - other.attackers,
@@ -52,60 +78,13 @@ class Node:
 			)
 		return NotImplemented
 
-	# Allow unpacking
 	def __iter__(self):
+		"""Allows unpacking as a tuple: a, d = node"""
 		return iter((self.attackers, self.defenders))
 
-	# Print the same as a tuple
 	def __repr__(self):
+		"""Prints the same as a tuple: (a, d)"""
 		return f"({self.attackers}, {self.defenders})"
-
-	def is_valid(self):
-		return not any(i < 0 for i in [self.attackers, self.defenders]) and self.attackers + self.defenders > 0
-
-	def has_edges(self):
-		return self.attackers > 0 and self.defenders > 0
-
-	@property
-	def space(self) -> ProbabilitySpace:
-		return probability_space(self)
-
-class ProbabilitySpaceBoundary:
-	node: Node
-	dice: int
-	W_node: Node
-	T_node: Node | None
-	L_node: Node
-
-	def __init__(self, node: Node):
-		self.node = node
-		self.dice = min(min(3, node.attackers), min(2, node.defenders))
-		match self.dice:
-			case 2:
-				self.W_node = Node(node.attackers    , node.defenders - 2)
-				self.T_node = Node(node.attackers - 1, node.defenders - 1)
-				self.L_node = Node(node.attackers - 2, node.defenders    )
-			case 1:
-				self.W_node = Node(node.attackers    , node.defenders - 1)
-				self.T_node = None
-				self.L_node = Node(node.attackers - 1, node.defenders    )
-				assert node.space.T == 0 # Sanity Check
-			case _:
-				raise ValueError("This isn't a probability space boundary, it's a null boundary")
-
-	def is_boundary(self) -> bool:
-		return any(
-			not outcome.has_edges() or outcome.space != self.node.space
-			for outcome, _ in self.traverse_edges()
-		)
-
-	def traverse_edges(self):
-		"""Yield (node, probability) for edges"""
-		space = self.node.space
-		yield (self.W_node, space.P_W)
-		if self.T_node:
-			yield (self.T_node, space.P_T)
-		yield (self.L_node, space.P_L)
 
 # probability_space is going to be called *a lot* so cache the results
 computed_spaces: dict[Node, ProbabilitySpace] = {}
@@ -119,7 +98,9 @@ def probability_space(attackers: int | tuple[int, int] | Node = 3, defenders: in
 	defenders = min(2, defenders)
 	dice = attackers + defenders
 
-	assert attackers > 0 and defenders > 0 and dice >= 2
+	assert attackers > 0
+	assert defenders > 0
+	assert dice >= 2
 
 	index = Node(attackers, defenders)
 	if index in computed_spaces:
