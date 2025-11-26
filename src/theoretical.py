@@ -202,7 +202,7 @@ def constant_space_probability(start: Node, end: Node) -> Fraction:
 	Compute the probability of transitioning from start to end using combinatorial calculations.
 
 	This function is optimized specifically for the 3v2 probability space where the combinatorial
-	savings are significant. Technically it could work for 2v2, but the logic assumes every combat
+	savings are significant. Technically it could work for 2v2: the logic assumes every combat
 	results in exactly 2 troops lost (W_max, W_edges, L_max, L_edges all use //2). Modifying this
 	for other spaces provides negligible benefit compared to handling them uniformly with dynamic
 	programming. Let this function do what it's good at: 3v2, and nothing else.
@@ -458,11 +458,24 @@ def print_probability_table():
 	for row in rows:
 		print("| " + " | ".join(row[i].ljust(widths[i]) for i in range(5)) + " |")
 
+def from_75_10_losing_n() -> dict[int, Fraction]:
+	"""
+	Generate an exact probability table for starting with (75, 10) and losing n troops
+	This method most closely mirrors monte carlos simulations
+	"""
+	output: dict[int, Fraction] = {}
+	# Compute victory scenarios
+	for attackers in range(1, 76):
+		output[75 - attackers] += compute_probability(Node(75, 10), Node(attackers, 0))
+	# Compute defeat scenarios
+	for defenders in range(1, 11):
+		output[75] += compute_probability(Node(75, 10), Node(0, defenders))
+	return output
+
 def main():
-	# What range of probabilities we are interested in considering
-	lost_range = range(50, 76)
-	exact_probability_of_losses  = {i: Fraction(0) for i in lost_range} # Stores the probability of losing n troops including the tail end from <5 dice rolls
-	approx_probability_of_losses = {i: Fraction(0) for i in lost_range} # Stores the probability of losing n troops ignoring the tail end from <5 dice rolls
+	unittest.main()
+
+	print_probability_table()
 
 	scales = [
 		(1e15, "100 trillion"), (1e14, "10 trillion"), (1e13, "a trillion"),
@@ -472,14 +485,11 @@ def main():
 		(1e2, "a hundred")
 	]
 
+	probability_map = {i: paths_union(Node((i, 10)), [Node((2, n)) for n in range(1, 11)]) for i in range(50, 76)}
 	for i in range(50, 76):
-		p = float(exact_probability_of_losses[i])
+		p = float(probability_map[i])
 		order = next((label for value, label in scales if p < 1/value), "<100")
 		print(f"p({i} lost): {p:.2e}, worse than 1 in {order}")
 
 if __name__ == '__main__':
-	test = False
-	if test:
-		unittest.main()
-	else:
-		print_probability_table()
+	main()
