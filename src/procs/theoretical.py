@@ -458,12 +458,12 @@ def print_probability_table():
 	for row in rows:
 		print("| " + " | ".join(row[i].ljust(widths[i]) for i in range(5)) + " |")
 
-def from_75_10_losing_n() -> dict[int, Fraction]:
+def from_75_10_losing_n() -> list[Fraction]:
 	"""
 	Generate an exact probability table for starting with (75, 10) and losing n troops
 	This method most closely mirrors monte carlos simulations
 	"""
-	output: dict[int, Fraction] = {}
+	output = [Fraction(0)] * 76
 	# Compute victory scenarios
 	for attackers in range(1, 76):
 		output[75 - attackers] += compute_probability(Node(75, 10), Node(attackers, 0))
