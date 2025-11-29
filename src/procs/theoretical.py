@@ -458,18 +458,25 @@ def print_probability_table():
 	for row in rows:
 		print("| " + " | ".join(row[i].ljust(widths[i]) for i in range(5)) + " |")
 
-def from_75_10_losing_n() -> list[Fraction]:
+def from_start_losing_n(attackers = 75, defenders = 10) -> list[Fraction]:
 	"""
-	Generate an exact probability table for starting with (75, 10) and losing n troops
+	Generate an exact probability table for starting with (attackers, defenders) and losing n troops
 	This method most closely mirrors monte carlos simulations
 	"""
-	output = [Fraction(0)] * 76
+	start = Node(attackers, defenders)
+	range_attackers = attackers + 1
+	range_defenders = defenders + 1
+
+	output = [Fraction(0)] * range_attackers
+
 	# Compute victory scenarios
-	for attackers in range(1, 76):
-		output[75 - attackers] += compute_probability(Node(75, 10), Node(attackers, 0))
+	for attackers_left in range(1, range_attackers):
+		output[attackers - attackers_left] += compute_probability(start, Node(attackers_left, 0))
+
 	# Compute defeat scenarios
-	for defenders in range(1, 11):
-		output[75] += compute_probability(Node(75, 10), Node(0, defenders))
+	for defenders_left in range(1, range_defenders):
+		output[attackers] += compute_probability(start, Node(0, defenders_left))
+
 	return output
 
 def main():

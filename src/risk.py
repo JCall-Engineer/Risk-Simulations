@@ -1,6 +1,7 @@
 from matplotlib import pyplot
 from utils.params import Processor, simulations_label, simulations_value, list_saves, print_results, run_simulation, job, make_slug, load_results
 from procs.sim_gpu import test_kernel_performance
+from procs.theoretical import from_start_losing_n
 
 class RiskSimulator:
 	def __init__(self):
