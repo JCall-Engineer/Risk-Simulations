@@ -28,6 +28,7 @@ class ProcessorConfig:
 class Processor(Enum):
 	CPU = 'CPU'
 	GPU = 'CUDA'
+	MATH = 'MATH'
 
 @dataclass
 class SimulationRequest:
@@ -137,6 +138,10 @@ def print_results(job: SimulationRequest, results: numpy.ndarray) -> None:
 def run_simulation(job: SimulationRequest) -> tuple[float, numpy.ndarray]:
 	from procs.sim_cpu import run_simulation_cpu
 	from procs.sim_gpu import run_simulation_cuda
+
+	if job.processor == Processor.MATH:
+		raise ValueError("Theoretical calculations don't use run_simulation")
+
 	slug = make_slug(job)
 	file_name = f"out/{slug}.txt"
 	if os.path.exists(file_name):
